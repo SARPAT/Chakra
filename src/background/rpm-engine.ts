@@ -80,44 +80,59 @@ const SMOOTH_OLDEST = 0.20;
 const MIN_SAMPLES_FOR_P95 = 20;
 
 class SignalCollector {
-  private readonly buffer: (RingBufferEntry | null)[];
+  private readonly buffer: RingBufferEntry[];
   private head = 0;
   private count = 0;
   private readonly capacity: number;
 
   constructor(capacity: number = DEFAULT_CAPACITY) {
     this.capacity = capacity;
-    this.buffer = new Array<RingBufferEntry | null>(capacity).fill(null);
+    // Pre-allocate all slots to eliminate per-request heap allocation
+    this.buffer = Array.from({ length: capacity }, () => ({
+      timestamp: 0, responseTimeMs: 0, statusCode: 0, block: '', endpoint: '',
+    }));
   }
 
-  push(entry: RingBufferEntry): void {
-    this.buffer[this.head % this.capacity] = entry;
+  /** O(1) write — no allocation, writes fields in-place into pre-allocated slot */
+  push(ts: number, rt: number, sc: number, block: string, endpoint: string): void {
+    const slot = this.buffer[this.head % this.capacity];
+    slot.timestamp = ts;
+    slot.responseTimeMs = rt;
+    slot.statusCode = sc;
+    slot.block = block;
+    slot.endpoint = endpoint;
     this.head++;
     if (this.count < this.capacity) this.count++;
   }
 
-  getWindow(sinceTimestamp: number): RingBufferEntry[] {
-    const result: RingBufferEntry[] = [];
+  /** Returns entries within window, partitioned by block in a single pass */
+  getWindowPartitioned(sinceTimestamp: number): {
+    all: RingBufferEntry[];
+    byBlock: Map<string, RingBufferEntry[]>;
+  } {
+    const all: RingBufferEntry[] = [];
+    const byBlock = new Map<string, RingBufferEntry[]>();
     const start = this.head - this.count;
     for (let i = start; i < this.head; i++) {
       const entry = this.buffer[i % this.capacity];
-      if (entry !== null && entry.timestamp >= sinceTimestamp) {
-        result.push(entry);
+      if (entry.timestamp >= sinceTimestamp) {
+        // Snapshot the entry so background calculations read stable values
+        const snapshot: RingBufferEntry = {
+          timestamp: entry.timestamp,
+          responseTimeMs: entry.responseTimeMs,
+          statusCode: entry.statusCode,
+          block: entry.block,
+          endpoint: entry.endpoint,
+        };
+        all.push(snapshot);
+        if (snapshot.block) {
+          let arr = byBlock.get(snapshot.block);
+          if (!arr) { arr = []; byBlock.set(snapshot.block, arr); }
+          arr.push(snapshot);
+        }
       }
     }
-    return result;
-  }
-
-  getWindowForBlock(sinceTimestamp: number, block: string): RingBufferEntry[] {
-    const result: RingBufferEntry[] = [];
-    const start = this.head - this.count;
-    for (let i = start; i < this.head; i++) {
-      const entry = this.buffer[i % this.capacity];
-      if (entry !== null && entry.timestamp >= sinceTimestamp && entry.block === block) {
-        result.push(entry);
-      }
-    }
-    return result;
+    return { all, byBlock };
   }
 }
 
@@ -175,13 +190,14 @@ export class RPMEngine {
   /** Record a request for signal collection. Hot path — must be <0.1ms, never throws. */
   recordRequest(params: RecordRequestParams): void {
     try {
-      this.collector.push({
-        timestamp: Date.now(),
-        responseTimeMs: params.responseTimeMs,
-        statusCode: params.statusCode,
-        block: params.block,
-        endpoint: params.endpoint,
-      });
+      // Zero-allocation write: fields written in-place into pre-allocated ring buffer slot
+      this.collector.push(
+        Date.now(),
+        params.responseTimeMs,
+        params.statusCode,
+        params.block,
+        params.endpoint,
+      );
     } catch {
       // swallow — never throw from hot path
     }
@@ -208,7 +224,9 @@ export class RPMEngine {
   private calculate(): RPMState {
     const now = Date.now();
     const phase = this.getPhase();
-    const window = this.collector.getWindow(now - WINDOW_MS);
+
+    // Single-pass: get full window + per-block partitions simultaneously
+    const { all: window, byBlock } = this.collector.getWindowPartitioned(now - WINDOW_MS);
 
     // Compute global RPM
     const globalRaw = this.computeRPMFromEntries(window, phase);
@@ -224,16 +242,10 @@ export class RPMEngine {
       this.history[0] * SMOOTH_OLDEST
     );
 
-    // Compute per-block RPM
-    const blocks = new Set<string>();
-    for (const entry of window) {
-      if (entry.block) blocks.add(entry.block);
-    }
-
+    // Compute per-block RPM from pre-partitioned data (no extra scans)
     const perBlock: Record<string, number> = {};
-    for (const block of blocks) {
-      const blockWindow = this.collector.getWindowForBlock(now - WINDOW_MS, block);
-      perBlock[block] = Math.round(this.computeRPMFromEntries(blockWindow, phase));
+    for (const [block, blockEntries] of byBlock) {
+      perBlock[block] = Math.round(this.computeRPMFromEntries(blockEntries, phase));
     }
 
     // Freeze perBlock to prevent mutation
@@ -265,9 +277,13 @@ export class RPMEngine {
     if (baseline <= 0) return 0;
 
     // Calculate current request rate (requests per minute)
-    const timestamps = entries.map(e => e.timestamp);
-    const minTs = Math.min(...timestamps);
-    const maxTs = Math.max(...timestamps);
+    // Single-pass min/max — no intermediate array or spread allocation
+    let minTs = Infinity;
+    let maxTs = -Infinity;
+    for (const e of entries) {
+      if (e.timestamp < minTs) minTs = e.timestamp;
+      if (e.timestamp > maxTs) maxTs = e.timestamp;
+    }
     const durationMs = maxTs - minTs;
 
     // Need at least some time span to calculate a rate
