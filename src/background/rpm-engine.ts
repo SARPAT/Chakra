@@ -52,6 +52,10 @@ export function normalizeERD(ratio: number): number {
   return interpolate(points, ratio);
 }
 
+// Note: Hysteresis on level transitions (CP2 §3) is owned by the Activation
+// component (src/core/activation.ts), not the RPM Engine. The RPM Engine
+// produces the raw smoothed score; Activation decides when to change levels.
+
 // --- Signal Collector (ring buffer) ---
 
 const DEFAULT_CAPACITY = 10_000;
@@ -243,9 +247,13 @@ export class RPMEngine {
     );
 
     // Compute per-block RPM from pre-partitioned data (no extra scans)
+    // Note: per-block scores are not smoothed individually — smoothing is applied
+    // only to the global RPM. Per-block smoothing requires per-block history which
+    // will be added when Shadow Mode provides per-block baselines.
     const perBlock: Record<string, number> = {};
     for (const [block, blockEntries] of byBlock) {
-      perBlock[block] = Math.round(this.computeRPMFromEntries(blockEntries, phase));
+      const raw = Math.round(this.computeRPMFromEntries(blockEntries, phase));
+      perBlock[block] = Math.max(0, Math.min(100, raw));
     }
 
     // Freeze perBlock to prevent mutation
