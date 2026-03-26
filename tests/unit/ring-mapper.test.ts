@@ -412,6 +412,23 @@ describe('rollback', () => {
     const mapper = createMapper();
     expect(mapper.rollback(999)).toBe(false);
   });
+
+  it('rollback restores registry — recompile after rollback uses old blocks', () => {
+    const mapper = new RingMapper({
+      blocks: { 'v1-block': { endpoints: ['GET /api/v1'], minLevel: 0, weightBase: 50 } },
+    });
+    // Add a block and recompile to v2
+    mapper.registerBlock('v2-block', { endpoints: ['GET /api/v2'], minLevel: 1, weightBase: 40 });
+    mapper.compile();
+    expect(mapper.lookup('GET', '/api/v2').block).toBe('v2-block');
+
+    // Rollback to v1 — registry should also revert
+    mapper.rollback(1);
+    // Recompile should produce the v1 registry (no v2-block)
+    mapper.compile();
+    expect(mapper.lookup('GET', '/api/v1').block).toBe('v1-block');
+    expect(mapper.lookup('GET', '/api/v2').block).toBe('default-block');
+  });
 });
 
 // ===================================================================
@@ -459,37 +476,54 @@ describe('unmatched endpoint tracking', () => {
 // ===================================================================
 
 describe('validation', () => {
-  it('rejects minLevel out of range', () => {
-    expect(() => new RingMapper({
+  it('constructor silently recovers from invalid config (CHAKRA Rule #1)', () => {
+    // Must not throw — falls back to empty catch-all-only map
+    const mapper = new RingMapper({
       blocks: { 'bad': { endpoints: ['GET /test'], minLevel: 5, weightBase: 50 } },
-    })).toThrow(/minLevel/);
+    });
+    expect(mapper.lookup('GET', '/test').block).toBe('default-block');
   });
 
-  it('rejects negative minLevel', () => {
-    expect(() => new RingMapper({
-      blocks: { 'bad': { endpoints: ['GET /test'], minLevel: -1, weightBase: 50 } },
-    })).toThrow(/minLevel/);
+  it('compile() throws on minLevel out of range', () => {
+    const mapper = new RingMapper({ blocks: {} });
+    mapper.registerBlock('bad', { endpoints: ['GET /test'], minLevel: 5, weightBase: 50 });
+    expect(() => mapper.compile()).toThrow(/minLevel/);
   });
 
-  it('rejects weightBase out of range', () => {
-    expect(() => new RingMapper({
-      blocks: { 'bad': { endpoints: ['GET /test'], minLevel: 0, weightBase: 150 } },
-    })).toThrow(/weightBase/);
+  it('compile() throws on negative minLevel', () => {
+    const mapper = new RingMapper({ blocks: {} });
+    mapper.registerBlock('bad', { endpoints: ['GET /test'], minLevel: -1, weightBase: 50 });
+    expect(() => mapper.compile()).toThrow(/minLevel/);
   });
 
-  it('rejects duplicate exact endpoints across blocks', () => {
-    expect(() => new RingMapper({
+  it('compile() throws on weightBase out of range', () => {
+    const mapper = new RingMapper({ blocks: {} });
+    mapper.registerBlock('bad', { endpoints: ['GET /test'], minLevel: 0, weightBase: 150 });
+    expect(() => mapper.compile()).toThrow(/weightBase/);
+  });
+
+  it('constructor recovers from duplicate endpoints', () => {
+    const mapper = new RingMapper({
       blocks: {
         'block-a': { endpoints: ['GET /api/shared'], minLevel: 0, weightBase: 50 },
         'block-b': { endpoints: ['GET /api/shared'], minLevel: 1, weightBase: 40 },
       },
-    })).toThrow(/Duplicate/);
+    });
+    // Falls back to empty map
+    expect(mapper.lookup('GET', '/api/shared').block).toBe('default-block');
   });
 
-  it('rejects malformed endpoint string', () => {
-    expect(() => new RingMapper({
-      blocks: { 'bad': { endpoints: ['nospace'], minLevel: 0, weightBase: 50 } },
-    })).toThrow(/Invalid endpoint format/);
+  it('compile() throws on duplicate exact endpoints across blocks', () => {
+    const mapper = new RingMapper({ blocks: {} });
+    mapper.registerBlock('block-a', { endpoints: ['GET /api/shared'], minLevel: 0, weightBase: 50 });
+    mapper.registerBlock('block-b', { endpoints: ['GET /api/shared'], minLevel: 1, weightBase: 40 });
+    expect(() => mapper.compile()).toThrow(/Duplicate/);
+  });
+
+  it('compile() throws on malformed endpoint string', () => {
+    const mapper = new RingMapper({ blocks: {} });
+    mapper.registerBlock('bad', { endpoints: ['nospace'], minLevel: 0, weightBase: 50 });
+    expect(() => mapper.compile()).toThrow(/Invalid endpoint format/);
   });
 });
 
