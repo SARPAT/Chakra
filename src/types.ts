@@ -23,9 +23,9 @@ export interface RouteInfo {
 
 /** Suspended response returned to client when request is blocked */
 export interface SuspendedResponse {
-  statusCode: number;
-  body: string;
-  headers: Record<string, string>;
+  status: number;
+  body: unknown;
+  headers?: Record<string, string>;
 }
 
 /** Dispatcher outcome */
@@ -39,6 +39,7 @@ export interface RPMState {
   global: number;           // 0-100
   perBlock: Record<string, number>;
   updatedAt: number;
+  phase: 1 | 2 | 3;        // cold start phase
 }
 
 /** Block state — determines current active level per block */
@@ -47,4 +48,19 @@ export interface BlockState {
   currentLevel: number;
   isActive: boolean;
   isSuspended: boolean;
+}
+
+/** Parameters for recording a request in the RPM Engine's signal collector */
+export interface RecordRequestParams {
+  endpoint: string;
+  block: string;
+  responseTimeMs: number;
+  statusCode: number;
+}
+
+/** Baseline configuration for RPM Engine — provided by Shadow Mode or defaults */
+export interface BaselineConfig {
+  requestRateBaseline: number;    // requests per minute
+  latencyP95Baseline: number;     // milliseconds
+  errorRateBaseline: number;      // percentage (0-100)
 }

@@ -4,4 +4,4 @@
 //   app.use(chakra.middleware());
 //   app.get('/checkout', chakra.block('payment-block'), handler);
 
-export { SessionContext, RouteInfo, DispatchOutcome, RPMState, BlockState } from './types';
+export { SessionContext, RouteInfo, SuspendedResponse, DispatchOutcome, RPMState, BlockState, RecordRequestParams, BaselineConfig } from './types';
