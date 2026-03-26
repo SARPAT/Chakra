@@ -102,3 +102,24 @@ export interface LevelState {
   activeBlocks: readonly string[];
   suspendedBlocks: readonly string[];
 }
+
+// --- Dispatcher types ---
+
+/** Activation state — Activation component writes, Dispatcher reads */
+export interface ActivationState {
+  active: boolean;
+  currentLevel: number;   // 0-3
+}
+
+/** Dispatcher metrics — Dispatcher produces, Dashboard reads */
+export interface DispatcherMetrics {
+  totalRequests: number;
+  outcomes: {
+    serveFully: number;
+    serveLimited: number;
+    suspended: number;
+  };
+  perBlock: Record<string, { served: number; limited: number; suspended: number }>;
+  weightOverrides: number;
+  policyOverrides: number;
+}
