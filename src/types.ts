@@ -64,3 +64,41 @@ export interface BaselineConfig {
   latencyP95Baseline: number;     // milliseconds
   errorRateBaseline: number;      // percentage (0-100)
 }
+
+// --- Ring Mapper types ---
+
+/** How to handle requests to endpoints not in the Ring Map */
+export type UnmatchedEndpointMode = 'default-block' | 'outermost-level' | 'alert-only';
+
+/** What response type to return when a block is suspended */
+export type SuspendedBlockResponseType = 'empty' | 'cached' | 'static' | '503';
+
+/** Per-block suspension response configuration */
+export interface SuspendedBlockConfig {
+  responseType: SuspendedBlockResponseType;
+  staticResponse?: string;
+  cacheMaxAgeSeconds?: number;
+}
+
+/** Developer's block definition input */
+export interface BlockDefinition {
+  name?: string;
+  endpoints: string[];
+  minLevel: number;             // 0 = never suspend, 3 = first to go
+  weightBase: number;           // 0-100
+  whenSuspended?: SuspendedBlockConfig;
+}
+
+/** Full Ring Map configuration input */
+export interface RingMapConfig {
+  blocks: Record<string, BlockDefinition>;
+  unmatchedEndpointHandling?: UnmatchedEndpointMode;
+  maxVersionHistory?: number;
+}
+
+/** Computed state at a given degradation level */
+export interface LevelState {
+  level: number;
+  activeBlocks: readonly string[];
+  suspendedBlocks: readonly string[];
+}
