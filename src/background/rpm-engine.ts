@@ -1,6 +1,326 @@
-// RPM Engine — Load signal producer
-// Produces a single 0-100 score combining:
-//   Request Arrival Rate (30%), Response Latency P95 (40%), Error Rate Delta (30%)
-// Updates every 5 seconds with smoothing across 3 readings.
+import type { RPMState, RecordRequestParams, BaselineConfig } from '../types';
 
-export {};
+// --- Internal types ---
+
+interface RingBufferEntry {
+  timestamp: number;
+  responseTimeMs: number;
+  statusCode: number;
+  block: string;
+  endpoint: string;
+}
+
+// --- Normalization helpers (exported for direct unit testing) ---
+
+/** Piecewise linear interpolation between reference points */
+export function interpolate(points: readonly [number, number][], x: number): number {
+  if (x <= points[0][0]) return points[0][1];
+  if (x >= points[points.length - 1][0]) return points[points.length - 1][1];
+
+  for (let i = 1; i < points.length; i++) {
+    if (x <= points[i][0]) {
+      const [x0, y0] = points[i - 1];
+      const [x1, y1] = points[i];
+      const t = (x - x0) / (x1 - x0);
+      return y0 + t * (y1 - y0);
+    }
+  }
+  return points[points.length - 1][1];
+}
+
+/** Normalize Request Arrival Rate ratio to 0-100 score */
+export function normalizeRAR(ratio: number): number {
+  const points: [number, number][] = [
+    [1.0, 0], [2.0, 50], [3.0, 75], [4.0, 95], [5.0, 100],
+  ];
+  return interpolate(points, ratio);
+}
+
+/** Normalize Response Latency P95 ratio to 0-100 score */
+export function normalizeRLP(ratio: number): number {
+  const points: [number, number][] = [
+    [1.0, 0], [2.0, 40], [3.0, 65], [5.0, 90], [6.0, 100],
+  ];
+  return interpolate(points, ratio);
+}
+
+/** Normalize Error Rate Delta ratio to 0-100 score */
+export function normalizeERD(ratio: number): number {
+  const points: [number, number][] = [
+    [1.0, 0], [1.5, 30], [2.0, 55], [4.0, 85], [5.0, 100],
+  ];
+  return interpolate(points, ratio);
+}
+
+// --- Signal Collector (ring buffer) ---
+
+const DEFAULT_CAPACITY = 10_000;
+const WINDOW_MS = 60_000;       // 60-second sliding window
+const UPDATE_INTERVAL_MS = 5_000;
+
+// Cold start defaults
+const COLD_START_LATENCY_BASELINE = 500;  // ms
+const COLD_START_ERROR_BASELINE = 2;      // percent
+
+// Phase boundaries (ms)
+const PHASE_2_THRESHOLD = 2 * 60 * 60 * 1000;  // 2 hours
+const PHASE_3_THRESHOLD = 24 * 60 * 60 * 1000;  // 24 hours
+
+// Formula weights
+const WEIGHT_RAR = 0.30;
+const WEIGHT_RLP = 0.40;
+const WEIGHT_ERD = 0.30;
+
+// Smoothing weights
+const SMOOTH_NOW = 0.50;
+const SMOOTH_PREV = 0.30;
+const SMOOTH_OLDEST = 0.20;
+
+// Minimum samples for P95 calculation; below this, use max
+const MIN_SAMPLES_FOR_P95 = 20;
+
+class SignalCollector {
+  private readonly buffer: (RingBufferEntry | null)[];
+  private head = 0;
+  private count = 0;
+  private readonly capacity: number;
+
+  constructor(capacity: number = DEFAULT_CAPACITY) {
+    this.capacity = capacity;
+    this.buffer = new Array<RingBufferEntry | null>(capacity).fill(null);
+  }
+
+  push(entry: RingBufferEntry): void {
+    this.buffer[this.head % this.capacity] = entry;
+    this.head++;
+    if (this.count < this.capacity) this.count++;
+  }
+
+  getWindow(sinceTimestamp: number): RingBufferEntry[] {
+    const result: RingBufferEntry[] = [];
+    const start = this.head - this.count;
+    for (let i = start; i < this.head; i++) {
+      const entry = this.buffer[i % this.capacity];
+      if (entry !== null && entry.timestamp >= sinceTimestamp) {
+        result.push(entry);
+      }
+    }
+    return result;
+  }
+
+  getWindowForBlock(sinceTimestamp: number, block: string): RingBufferEntry[] {
+    const result: RingBufferEntry[] = [];
+    const start = this.head - this.count;
+    for (let i = start; i < this.head; i++) {
+      const entry = this.buffer[i % this.capacity];
+      if (entry !== null && entry.timestamp >= sinceTimestamp && entry.block === block) {
+        result.push(entry);
+      }
+    }
+    return result;
+  }
+}
+
+// --- Default baseline config ---
+
+const DEFAULT_BASELINE: BaselineConfig = {
+  requestRateBaseline: 0,
+  latencyP95Baseline: 0,
+  errorRateBaseline: 0,
+};
+
+// --- RPM Engine ---
+
+export class RPMEngine {
+  private readonly collector: SignalCollector;
+  private intervalId: ReturnType<typeof setInterval> | null = null;
+  private state: Readonly<RPMState>;
+  private history: [number, number, number] = [0, 0, 0];
+  private readonly config: BaselineConfig;
+  private readonly startTime: number;
+
+  constructor(config?: Partial<BaselineConfig>) {
+    this.config = { ...DEFAULT_BASELINE, ...config };
+    this.collector = new SignalCollector();
+    this.startTime = Date.now();
+
+    const initial: RPMState = {
+      global: 0,
+      perBlock: {},
+      updatedAt: Date.now(),
+      phase: this.getPhase(),
+    };
+    this.state = Object.freeze(initial);
+  }
+
+  /** Begin the 5-second update interval. Idempotent. */
+  start(): void {
+    if (this.intervalId !== null) return;
+    this.tick();
+    this.intervalId = setInterval(() => this.tick(), UPDATE_INTERVAL_MS);
+  }
+
+  /** Stop the update interval. Safe to call if not running. */
+  stop(): void {
+    if (this.intervalId === null) return;
+    clearInterval(this.intervalId);
+    this.intervalId = null;
+  }
+
+  /** Returns an immutable snapshot of the current RPM state. */
+  getState(): Readonly<RPMState> {
+    return this.state;
+  }
+
+  /** Record a request for signal collection. Hot path — must be <0.1ms, never throws. */
+  recordRequest(params: RecordRequestParams): void {
+    try {
+      this.collector.push({
+        timestamp: Date.now(),
+        responseTimeMs: params.responseTimeMs,
+        statusCode: params.statusCode,
+        block: params.block,
+        endpoint: params.endpoint,
+      });
+    } catch {
+      // swallow — never throw from hot path
+    }
+  }
+
+  // --- Private methods ---
+
+  private getPhase(): 1 | 2 | 3 {
+    const elapsed = Date.now() - this.startTime;
+    if (elapsed < PHASE_2_THRESHOLD) return 1;
+    if (elapsed < PHASE_3_THRESHOLD) return 2;
+    return 3;
+  }
+
+  private tick(): void {
+    try {
+      const newState = this.calculate();
+      this.state = Object.freeze(newState);
+    } catch {
+      // keep last known good state
+    }
+  }
+
+  private calculate(): RPMState {
+    const now = Date.now();
+    const phase = this.getPhase();
+    const window = this.collector.getWindow(now - WINDOW_MS);
+
+    // Compute global RPM
+    const globalRaw = this.computeRPMFromEntries(window, phase);
+
+    // Apply smoothing
+    this.history[0] = this.history[1];
+    this.history[1] = this.history[2];
+    this.history[2] = globalRaw;
+
+    const globalSmoothed = Math.round(
+      this.history[2] * SMOOTH_NOW +
+      this.history[1] * SMOOTH_PREV +
+      this.history[0] * SMOOTH_OLDEST
+    );
+
+    // Compute per-block RPM
+    const blocks = new Set<string>();
+    for (const entry of window) {
+      if (entry.block) blocks.add(entry.block);
+    }
+
+    const perBlock: Record<string, number> = {};
+    for (const block of blocks) {
+      const blockWindow = this.collector.getWindowForBlock(now - WINDOW_MS, block);
+      perBlock[block] = Math.round(this.computeRPMFromEntries(blockWindow, phase));
+    }
+
+    // Freeze perBlock to prevent mutation
+    Object.freeze(perBlock);
+
+    return {
+      global: Math.max(0, Math.min(100, globalSmoothed)),
+      perBlock,
+      updatedAt: now,
+      phase,
+    };
+  }
+
+  private computeRPMFromEntries(entries: RingBufferEntry[], phase: 1 | 2 | 3): number {
+    if (entries.length === 0) return 0;
+
+    const rarScore = this.computeRAR(entries, phase);
+    const rlpScore = this.computeRLP(entries, phase);
+    const erdScore = this.computeERD(entries, phase);
+
+    return rarScore * WEIGHT_RAR + rlpScore * WEIGHT_RLP + erdScore * WEIGHT_ERD;
+  }
+
+  private computeRAR(entries: RingBufferEntry[], phase: 1 | 2 | 3): number {
+    // Phase 1: RAR forced to 0 (treat current rate as baseline)
+    if (phase === 1) return 0;
+
+    const baseline = this.config.requestRateBaseline;
+    if (baseline <= 0) return 0;
+
+    // Calculate current request rate (requests per minute)
+    const timestamps = entries.map(e => e.timestamp);
+    const minTs = Math.min(...timestamps);
+    const maxTs = Math.max(...timestamps);
+    const durationMs = maxTs - minTs;
+
+    // Need at least some time span to calculate a rate
+    if (durationMs < 1000) {
+      // If all entries are within 1 second, estimate from count
+      // Assume the window represents ~5 seconds of data
+      const estimatedRate = (entries.length / 5) * 60;
+      const ratio = estimatedRate / baseline;
+      return normalizeRAR(ratio);
+    }
+
+    const durationMinutes = durationMs / 60_000;
+    const currentRate = entries.length / durationMinutes;
+    const ratio = currentRate / baseline;
+
+    return normalizeRAR(ratio);
+  }
+
+  private computeRLP(entries: RingBufferEntry[], phase: 1 | 2 | 3): number {
+    // Get effective baseline: phase 1 uses cold start default
+    let baseline = this.config.latencyP95Baseline;
+    if (phase === 1 || baseline <= 0) {
+      baseline = COLD_START_LATENCY_BASELINE;
+    }
+
+    const times = entries.map(e => e.responseTimeMs).sort((a, b) => a - b);
+    let p95: number;
+
+    if (times.length < MIN_SAMPLES_FOR_P95) {
+      // Conservative: use max value
+      p95 = times[times.length - 1];
+    } else {
+      const idx = Math.ceil(0.95 * times.length) - 1;
+      p95 = times[idx];
+    }
+
+    const ratio = p95 / baseline;
+    return normalizeRLP(ratio);
+  }
+
+  private computeERD(entries: RingBufferEntry[], phase: 1 | 2 | 3): number {
+    // Get effective baseline: phase 1 uses cold start default
+    let baseline = this.config.errorRateBaseline;
+    if (phase === 1 || baseline <= 0) {
+      baseline = COLD_START_ERROR_BASELINE;
+    }
+
+    const errorCount = entries.filter(e => e.statusCode >= 400).length;
+    const errorRate = (errorCount / entries.length) * 100;
+    const ratio = errorRate / baseline;
+
+    return normalizeERD(ratio);
+  }
+}
+
+export default RPMEngine;
