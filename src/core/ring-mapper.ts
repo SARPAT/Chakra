@@ -96,7 +96,8 @@ function isBlockSuspended(minLevel: number, currentLevel: number): boolean {
 export class RingMapper {
   private blockRegistry = new Map<string, BlockDefinition>();
   private currentMap: Readonly<CompiledRingMap>;
-  private versionHistory: CompiledRingMap[] = [];
+  private currentRegistrySnapshot = new Map<string, BlockDefinition>();
+  private versionHistory: { map: CompiledRingMap; registry: Map<string, BlockDefinition> }[] = [];
   private unmatchedHits = new Map<string, number>();
   private readonly unmatchedMode: UnmatchedEndpointMode;
   private readonly maxVersionHistory: number;
@@ -113,8 +114,15 @@ export class RingMapper {
       }
     }
 
-    // Build initial compiled map (may be empty if no blocks provided)
-    this.currentMap = Object.freeze(this.compileMap());
+    // Build initial compiled map — never throw from constructor (CHAKRA Rule #1)
+    try {
+      this.currentMap = Object.freeze(this.compileMap());
+    } catch {
+      // Fall back to empty catch-all-only map so the app keeps running
+      this.blockRegistry.clear();
+      this.currentMap = Object.freeze(this.compileMap());
+    }
+    this.currentRegistrySnapshot = new Map(this.blockRegistry);
   }
 
   // --- Hot path ---
@@ -218,13 +226,17 @@ export class RingMapper {
   compile(): void {
     const newMap = this.compileMap();
 
-    // Push current to history
-    this.versionHistory.push(this.currentMap);
+    // Store the registry snapshot that corresponds to the CURRENT active map
+    this.versionHistory.push({
+      map: this.currentMap,
+      registry: this.currentRegistrySnapshot,
+    });
     if (this.versionHistory.length > this.maxVersionHistory) {
       this.versionHistory.shift();
     }
 
     this.currentMap = Object.freeze(newMap);
+    this.currentRegistrySnapshot = new Map(this.blockRegistry);
   }
 
   /** Get the current ring map version number. */
@@ -232,21 +244,27 @@ export class RingMapper {
     return this.currentMap.version;
   }
 
-  /** Rollback to a previous version. Returns true if successful, false if version not found. */
+  /** Rollback to a previous version. Restores both the compiled map and block registry. */
   rollback(version: number): boolean {
-    const idx = this.versionHistory.findIndex(m => m.version === version);
+    const idx = this.versionHistory.findIndex(entry => entry.map.version === version);
     if (idx === -1) return false;
 
     const target = this.versionHistory[idx];
-    // Push current to history before rollback
-    this.versionHistory.push(this.currentMap);
+    // Push current state to history before rollback
+    this.versionHistory.push({
+      map: this.currentMap,
+      registry: this.currentRegistrySnapshot,
+    });
     // Remove the target from history (it's now active)
     this.versionHistory.splice(idx, 1);
     if (this.versionHistory.length > this.maxVersionHistory) {
       this.versionHistory.shift();
     }
 
-    this.currentMap = Object.freeze(target);
+    // Restore the compiled map, block registry, and registry snapshot
+    this.currentMap = Object.freeze(target.map);
+    this.blockRegistry = new Map(target.registry);
+    this.currentRegistrySnapshot = new Map(target.registry);
     return true;
   }
 
