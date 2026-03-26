@@ -9,4 +9,5 @@ export {
   RPMState, BlockState, RecordRequestParams, BaselineConfig,
   UnmatchedEndpointMode, SuspendedBlockResponseType, SuspendedBlockConfig,
   BlockDefinition, RingMapConfig, LevelState,
+  ActivationState, DispatcherMetrics,
 } from './types';
