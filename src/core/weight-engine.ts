@@ -120,8 +120,11 @@ export class WeightEngine implements WeightProvider {
         ? sessionContext
         : null;
 
-      // Signal 3 — Authentication (derived from session presence as proxy)
-      // A session with userTier or callCount > 0 implies authenticated
+      // Signal 3 — Authentication (proxy: session with callCount > 0)
+      // Design decision: real isAuthenticated from request headers is not available
+      // via WeightProvider interface. Using session presence as proxy means anonymous
+      // returning visitors observed by Shadow Mode get +10 bonus. This is acceptable:
+      // returning visitors with session history have demonstrated engagement.
       const isAuthenticated = session != null && session.callCount > 0;
       weight += calculateAuthSignal(isAuthenticated);
 
