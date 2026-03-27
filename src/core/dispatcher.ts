@@ -12,6 +12,8 @@ export interface WeightProvider {
     routeInfo: RouteInfo,
     sessionContext: SessionContext | null,
     currentLevel: number,
+    method: string,
+    path: string,
   ): number;
 }
 
@@ -122,7 +124,7 @@ export class Dispatcher {
 
       // STEP 5 — Weight Engine (< 0.5ms)
       const weight = this.weightProvider
-        ? this.weightProvider.calculateWeight(routeInfo, session, activation.currentLevel)
+        ? this.weightProvider.calculateWeight(routeInfo, session, activation.currentLevel, method, path)
         : 0;
 
       // High weight overrides suspension completely
