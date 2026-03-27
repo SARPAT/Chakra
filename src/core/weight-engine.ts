@@ -162,7 +162,10 @@ export class WeightEngine implements WeightProvider {
 // --- Helpers ---
 
 function isSessionStale(session: SessionContext): boolean {
-  if (!session.lastSeenTime) return false;
+  // lastSeenTime undefined/null → time not tracked, assume fresh
+  // lastSeenTime 0 → epoch, treat as stale (no valid session has epoch timestamp)
+  if (session.lastSeenTime == null) return false;
+  if (session.lastSeenTime === 0) return true;
   return (Date.now() - session.lastSeenTime) > SESSION_STALE_THRESHOLD_MS;
 }
 
