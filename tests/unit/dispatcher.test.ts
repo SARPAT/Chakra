@@ -323,7 +323,7 @@ describe('Dispatcher', () => {
       expect(wp.calculateWeight).toHaveBeenCalledWith(
         expect.objectContaining({ block: 'test-block' }),
         mockSession,
-        2,
+        2, 'GET', '/api/recs',
       );
     });
 
@@ -335,7 +335,7 @@ describe('Dispatcher', () => {
       });
       d.dispatch('GET', '/api/recs');
       expect(wp.calculateWeight).toHaveBeenCalledWith(
-        expect.anything(), null, 2,
+        expect.anything(), null, 2, 'GET', '/api/recs',
       );
     });
 
@@ -347,7 +347,7 @@ describe('Dispatcher', () => {
       });
       d.dispatch('GET', '/api/recs', 'sess-123');
       expect(wp.calculateWeight).toHaveBeenCalledWith(
-        expect.anything(), null, 2,
+        expect.anything(), null, 2, 'GET', '/api/recs',
       );
     });
 
@@ -361,7 +361,7 @@ describe('Dispatcher', () => {
       });
       d.dispatch('GET', '/api/recs', 'sess-123');
       expect(wp.calculateWeight).toHaveBeenCalledWith(
-        expect.anything(), null, 2,
+        expect.anything(), null, 2, 'GET', '/api/recs',
       );
     });
   });
@@ -617,11 +617,11 @@ describe('Dispatcher', () => {
         weightProvider: wp,
       });
       d.dispatch('GET', '/', 'sess-1');
-      expect(wp.calculateWeight).toHaveBeenCalledWith(expect.anything(), null, 2);
+      expect(wp.calculateWeight).toHaveBeenCalledWith(expect.anything(), null, 2, 'GET', '/');
 
       d.setSessionProvider(createMockSessionProvider(mockSession));
       d.dispatch('GET', '/', 'sess-1');
-      expect(wp.calculateWeight).toHaveBeenLastCalledWith(expect.anything(), mockSession, 2);
+      expect(wp.calculateWeight).toHaveBeenLastCalledWith(expect.anything(), mockSession, 2, 'GET', '/');
     });
 
     it('getActivationState returns snapshot', () => {
