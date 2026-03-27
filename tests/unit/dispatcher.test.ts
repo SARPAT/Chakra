@@ -87,11 +87,11 @@ describe('Dispatcher', () => {
       expect(Object.isFrozen(r1)).toBe(true);
     });
 
-    it('still increments totalRequests when sleeping', () => {
+    it('does not increment metrics when sleeping (zero writes on sleep path)', () => {
       const d = new Dispatcher({ ringMapper: createMockRingMapper() });
       d.dispatch('GET', '/a');
       d.dispatch('GET', '/b');
-      expect(d.getMetrics().totalRequests).toBe(2);
+      expect(d.getMetrics().totalRequests).toBe(0);
     });
   });
 
@@ -457,8 +457,8 @@ describe('Dispatcher', () => {
   // ─── Metrics ──────────────────────────────────────────────────
 
   describe('metrics', () => {
-    it('tracks totalRequests', () => {
-      const d = new Dispatcher({ ringMapper: createMockRingMapper() });
+    it('tracks totalRequests (only when active)', () => {
+      const d = createActiveDispatcher();
       d.dispatch('GET', '/a');
       d.dispatch('GET', '/b');
       d.dispatch('GET', '/c');

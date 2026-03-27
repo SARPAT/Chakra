@@ -23,6 +23,8 @@ interface CompiledRingMap {
   readonly catchAll: Readonly<RouteInfo>;
   readonly levelMap: readonly Readonly<LevelState>[];
   readonly suspendedConfigs: ReadonlyMap<string, Readonly<SuspendedBlockConfig>>;
+  /** Pre-computed block states per level — blockName → BlockState[level]. Zero allocation on read. */
+  readonly blockStates: ReadonlyMap<string, readonly Readonly<BlockState>[]>;
   readonly compiledAt: number;
 }
 
@@ -31,6 +33,7 @@ interface CompiledRingMap {
 const MAX_LEVEL = 3;
 const DEFAULT_MAX_VERSION_HISTORY = 10;
 const DEFAULT_CATCH_ALL_WEIGHT = 50;
+const MAX_UNMATCHED_ENTRIES = 10_000;
 
 // --- Helpers ---
 
@@ -180,19 +183,19 @@ export class RingMapper {
 
   // --- Level queries ---
 
-  /** Get the state of a specific block at a given system level. */
+  /** Get the state of a specific block at a given system level. Reads from pre-computed snapshot. */
   getBlockState(blockName: string, currentLevel: number): Readonly<BlockState> {
-    const def = this.blockRegistry.get(blockName);
-    const minLevel = def?.minLevel ?? 0;
-    const suspended = isBlockSuspended(minLevel, currentLevel);
-
-    const state: BlockState = {
+    if (currentLevel >= 0 && currentLevel <= MAX_LEVEL) {
+      const states = this.currentMap.blockStates.get(blockName);
+      if (states) return states[currentLevel];
+    }
+    // Unknown block or out-of-range level — always active (minLevel=0 default)
+    return Object.freeze({
       block: blockName,
       currentLevel,
-      isActive: !suspended,
-      isSuspended: suspended,
-    };
-    return Object.freeze(state);
+      isActive: true,
+      isSuspended: false,
+    });
   }
 
   /** Get all active block names at a given level. */
@@ -295,8 +298,9 @@ export class RingMapper {
 
   private trackUnmatched(key: string): void {
     // Only track for default-block and alert-only modes
-    // (outermost-level implies the endpoint is intentionally handled as low-priority)
     if (this.unmatchedMode === 'outermost-level') return;
+    // Cap size to prevent unbounded growth under adversarial URL enumeration
+    if (!this.unmatchedHits.has(key) && this.unmatchedHits.size >= MAX_UNMATCHED_ENTRIES) return;
     this.unmatchedHits.set(key, (this.unmatchedHits.get(key) ?? 0) + 1);
   }
 
@@ -382,6 +386,22 @@ export class RingMapper {
       }
     }
 
+    // Pre-compute block states per level — zero allocation on getBlockState() reads
+    const blockStates = new Map<string, readonly Readonly<BlockState>[]>();
+    for (const [blockName, def] of this.blockRegistry) {
+      const states: Readonly<BlockState>[] = [];
+      for (let level = 0; level <= MAX_LEVEL; level++) {
+        const suspended = isBlockSuspended(def.minLevel, level);
+        states.push(Object.freeze({
+          block: blockName,
+          currentLevel: level,
+          isActive: !suspended,
+          isSuspended: suspended,
+        }));
+      }
+      blockStates.set(blockName, Object.freeze(states));
+    }
+
     const version = this.nextVersion++;
 
     return {
@@ -392,6 +412,7 @@ export class RingMapper {
       catchAll,
       levelMap: Object.freeze(levelMap),
       suspendedConfigs,
+      blockStates,
       compiledAt: Date.now(),
     };
   }

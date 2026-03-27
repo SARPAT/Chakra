@@ -48,8 +48,12 @@ const DEFAULT_WEIGHT_HIGH = 65;
 const DEFAULT_WEIGHT_LOW = 40;
 const DEFAULT_HINT = 'reduce-payload';
 
-// Pre-frozen outcome — reused on every pass-through to avoid allocation
+// Pre-frozen outcomes — reused on every request to avoid allocation
 const SERVE_FULLY: Readonly<DispatchOutcome> = Object.freeze({ type: 'SERVE_FULLY' as const });
+const SERVE_LIMITED_DEFAULT: Readonly<DispatchOutcome> = Object.freeze({
+  type: 'SERVE_LIMITED' as const,
+  hint: DEFAULT_HINT,
+});
 
 // --- Dispatcher ---
 
@@ -88,14 +92,14 @@ export class Dispatcher {
    */
   dispatch(method: string, path: string, sessionId?: string): Readonly<DispatchOutcome> {
     try {
-      this._metrics.totalRequests++;
-
       // STEP 1 — Activation check (< 0.1ms)
+      // When sleeping: single boolean check + return. No writes, no lookups.
       const activation = this.activationState;
       if (!activation.active) {
-        this._metrics.outcomes.serveFully++;
         return SERVE_FULLY;
       }
+
+      this._metrics.totalRequests++;
 
       // STEP 2 — Ring Map lookup (< 0.1ms)
       const routeInfo = this.ringMapper.lookup(method, path);
@@ -145,10 +149,7 @@ export class Dispatcher {
       if (weight >= this.weightOverrideLow) {
         this._metrics.outcomes.serveLimited++;
         trackPerBlock(this._metrics, routeInfo.block, 'limited');
-        return Object.freeze({
-          type: 'SERVE_LIMITED' as const,
-          hint: DEFAULT_HINT,
-        });
+        return SERVE_LIMITED_DEFAULT;
       }
 
       // SUSPEND — build and return fallback response
