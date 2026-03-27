@@ -22,6 +22,7 @@ interface CompiledRingMap {
   readonly paramRoutes: readonly ParamRule[];
   readonly catchAll: Readonly<RouteInfo>;
   readonly levelMap: readonly Readonly<LevelState>[];
+  readonly suspendedConfigs: ReadonlyMap<string, Readonly<SuspendedBlockConfig>>;
   readonly compiledAt: number;
 }
 
@@ -215,9 +216,9 @@ export class RingMapper {
     return this.currentMap.levelMap;
   }
 
-  /** Get suspension config for a block. Used by Dispatcher for SUSPEND responses. */
-  getSuspendedBlockConfig(blockName: string): SuspendedBlockConfig | undefined {
-    return this.blockRegistry.get(blockName)?.whenSuspended;
+  /** Get suspension config for a block. Reads from compiled snapshot for concurrency safety. */
+  getSuspendedBlockConfig(blockName: string): Readonly<SuspendedBlockConfig> | undefined {
+    return this.currentMap.suspendedConfigs.get(blockName);
   }
 
   // --- Compilation & versioning ---
@@ -373,6 +374,14 @@ export class RingMapper {
       }));
     }
 
+    // Bake suspended configs into compiled map for immutable snapshot reads
+    const suspendedConfigs = new Map<string, Readonly<SuspendedBlockConfig>>();
+    for (const [blockName, def] of this.blockRegistry) {
+      if (def.whenSuspended) {
+        suspendedConfigs.set(blockName, Object.freeze({ ...def.whenSuspended }));
+      }
+    }
+
     const version = this.nextVersion++;
 
     return {
@@ -382,6 +391,7 @@ export class RingMapper {
       paramRoutes: Object.freeze(paramRoutes),
       catchAll,
       levelMap: Object.freeze(levelMap),
+      suspendedConfigs,
       compiledAt: Date.now(),
     };
   }

@@ -66,7 +66,8 @@ export class Dispatcher {
   // Activation state — swapped atomically by Activation component (CP2.5)
   private activationState: Readonly<ActivationState> = Object.freeze({ active: false, currentLevel: 0 });
 
-  // Metrics counters — mutable, read/reset by Dashboard
+  // Metrics counters — synchronous increments (nanoseconds in single-threaded Node.js).
+  // CP4 spec says "async" but that refers to Dashboard flush, not counting itself.
   private _metrics: DispatcherMetrics;
 
   constructor(config: DispatcherConfig) {
