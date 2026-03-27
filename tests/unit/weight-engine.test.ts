@@ -405,14 +405,14 @@ describe('WeightEngine', () => {
       expect(weight).toBe(50);
     });
 
-    it('treats lastSeenTime 0 as not stale', () => {
+    it('treats lastSeenTime 0 as stale (epoch = invalid)', () => {
       const engine = createEngine();
       const route = makeRoute({ weightBase: 30 });
       const session = makeSession({ callCount: 5, lastSeenTime: 0 });
-      // lastSeenTime=0 → isSessionStale returns false → session is used
-      // 30 + 0 + 10 (auth) + 5 (depth 3-5) = 45
+      // lastSeenTime=0 → epoch → treated as stale → session ignored
+      // 30 + 0 (GET) = 30
       const weight = engine.calculateWeight(route, session, 2, 'GET', '/');
-      expect(weight).toBe(45);
+      expect(weight).toBe(30);
     });
   });
 
