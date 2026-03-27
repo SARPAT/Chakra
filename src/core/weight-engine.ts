@@ -80,3 +80,87 @@ export interface WeightEngineConfig {
   /** Per-endpoint developer weight overrides. Key: "METHOD /path", value: additive bonus */
   endpointOverrides?: Record<string, number>;
 }
+
+// --- WeightEngine class ---
+
+export class WeightEngine implements WeightProvider {
+  private readonly tierConfig: Readonly<Record<string, number>>;
+  private readonly endpointOverrides: Readonly<Record<string, number>>;
+
+  constructor(config?: WeightEngineConfig) {
+    this.tierConfig = config?.tierConfig
+      ? Object.freeze({ ...config.tierConfig })
+      : DEFAULT_TIER_CONFIG;
+    this.endpointOverrides = config?.endpointOverrides
+      ? Object.freeze({ ...config.endpointOverrides })
+      : Object.freeze({});
+  }
+
+  /**
+   * Calculate weight score for a request hitting a suspended block.
+   * Pure function — same inputs always produce same output.
+   * Budget: < 0.5ms. Never throws.
+   */
+  calculateWeight(
+    routeInfo: RouteInfo,
+    sessionContext: SessionContext | null,
+    _currentLevel: number,
+    method: string,
+    path: string,
+  ): number {
+    try {
+      // Signal 1 — Block Base Weight (from Ring Map)
+      let weight = routeInfo.weightBase;
+
+      // Signal 2 — HTTP Method (+15 for writes)
+      weight += calculateMethodSignal(method);
+
+      // Session staleness check — treat stale sessions as absent
+      const session = sessionContext && !isSessionStale(sessionContext)
+        ? sessionContext
+        : null;
+
+      // Signal 3 — Authentication (derived from session presence as proxy)
+      // A session with userTier or callCount > 0 implies authenticated
+      const isAuthenticated = session != null && session.callCount > 0;
+      weight += calculateAuthSignal(isAuthenticated);
+
+      // Signals 4–7 — Session-derived signals (default to 0 if no session)
+      if (session) {
+        weight += calculateSessionDepthSignal(session.callCount);
+        weight += calculateCartStateSignal(session.cartItemCount);
+        weight += calculateMoVSignal(session.momentOfValueStrength);
+        weight += calculateTierSignal(session.userTier, this.tierConfig);
+      }
+
+      // Signal 8 — Developer endpoint override
+      const endpointKey = `${method.toUpperCase()} ${path}`;
+      weight += this.endpointOverrides[endpointKey] ?? 0;
+
+      // Cap at 100, floor at 0
+      return Math.min(Math.max(weight, 0), 100);
+    } catch {
+      // Never throw from Weight Engine — return base weight as safe fallback
+      return Math.min(Math.max(routeInfo.weightBase, 0), 100);
+    }
+  }
+
+  /** Get the current tier configuration (for Dashboard display) */
+  getTierConfig(): Readonly<Record<string, number>> {
+    return this.tierConfig;
+  }
+
+  /** Get endpoint overrides (for Dashboard display) */
+  getEndpointOverrides(): Readonly<Record<string, number>> {
+    return this.endpointOverrides;
+  }
+}
+
+// --- Helpers ---
+
+function isSessionStale(session: SessionContext): boolean {
+  if (!session.lastSeenTime) return false;
+  return (Date.now() - session.lastSeenTime) > SESSION_STALE_THRESHOLD_MS;
+}
+
+export default WeightEngine;
