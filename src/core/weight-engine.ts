@@ -61,4 +61,22 @@ export function calculateTierSignal(
   return tierConfig[userTier] ?? 0;
 }
 
-export {};
+// --- Configuration ---
+
+/** Default tier bonuses */
+const DEFAULT_TIER_CONFIG: Readonly<Record<string, number>> = Object.freeze({
+  standard: 0,
+  premium: 40,
+  enterprise: 50,
+});
+
+/** Session staleness threshold — sessions older than 30 minutes are treated as absent */
+const SESSION_STALE_THRESHOLD_MS = 30 * 60 * 1000;
+
+/** Weight Engine configuration */
+export interface WeightEngineConfig {
+  /** User tier bonuses by tier name. Default: standard=0, premium=40, enterprise=50 */
+  tierConfig?: Record<string, number>;
+  /** Per-endpoint developer weight overrides. Key: "METHOD /path", value: additive bonus */
+  endpointOverrides?: Record<string, number>;
+}
