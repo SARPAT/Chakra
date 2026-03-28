@@ -12,6 +12,7 @@ import { RingMapper } from './core/ring-mapper';
 import { Dispatcher } from './core/dispatcher';
 import { WeightEngine } from './core/weight-engine';
 import { PolicyEngine } from './core/policy-engine';
+import { ActivationController } from './core/activation';
 import RPMEngine from './background/rpm-engine';
 import { loadConfig, type ChakraConfig } from './config/loader';
 import { createExpressMiddleware, createRPMRecorder } from './integrations/express';
@@ -19,10 +20,6 @@ import { logger, printStartupBanner } from './utils/logger';
 import {
   DEFAULT_WEIGHT_HIGH,
   DEFAULT_WEIGHT_LOW,
-  DEFAULT_RPM_ACTIVATE_THRESHOLD,
-  DEFAULT_RPM_DEACTIVATE_THRESHOLD,
-  DEFAULT_ACTIVATE_SUSTAINED_SECONDS,
-  DEFAULT_DEACTIVATE_SUSTAINED_SECONDS,
   DEFAULT_DASHBOARD_PORT,
   DEFAULT_RPM_INTERVAL_SECONDS,
 } from './config/defaults';
@@ -51,14 +48,13 @@ export class ChakraInstance {
   private readonly policyEngine: PolicyEngine;
   private readonly dispatcher: Dispatcher;
   private readonly rpmEngine: RPMEngine;
+  private readonly activationController: ActivationController;
 
   // State
   private disabled = false;
   private registeredRoutes = new Set<string>();  // dedup for block() lazy registration
 
-  // Auto-mode activation tracking
-  private thresholdExceededSince: number | null = null;
-  private thresholdBelowSince: number | null = null;
+  // RPM → PolicyEngine sync interval
   private syncInterval: ReturnType<typeof setInterval> | null = null;
 
   constructor(configPath: string) {
@@ -105,9 +101,17 @@ export class ChakraInstance {
     // ── Step 4: RPM Engine ───────────────────────────────────────────────────
     this.rpmEngine = new RPMEngine();
 
+    // ── Step 5: Activation Controller ───────────────────────────────────────
+    this.activationController = new ActivationController({
+      dispatcher: this.dispatcher,
+      rpmEngine: this.rpmEngine,
+      chakraConfig: config,
+    });
+
     if (!this.disabled) {
       this.rpmEngine.start();
-      this.startSyncInterval();
+      this.activationController.start();
+      this.startRPMSyncInterval();
     }
 
     // ── Step 5: Startup banner ───────────────────────────────────────────────
@@ -177,18 +181,30 @@ export class ChakraInstance {
     };
   }
 
-  // ─── Manual activation controls ───────────────────────────────────────────
+  // ─── Activation controls ──────────────────────────────────────────────────
 
-  /** Activate CHAKRA at the given level (default: 1). */
-  activate(level = 1): void {
-    const clamped = Math.min(Math.max(Math.round(level), 1), 3);
-    this.dispatcher.setActivationState({ active: true, currentLevel: clamped });
-    logger.info(`Activated at level ${clamped}.`);
+  /**
+   * Activate CHAKRA at the given level (default: 1).
+   * @param level  1–3 (clamped). Higher = more aggressive degradation.
+   * @param initiatedBy  Optional identifier for audit log.
+   */
+  activate(level = 1, initiatedBy?: string): void {
+    this.activationController.activate(level, initiatedBy);
+    logger.info(`Activated at level ${Math.min(Math.max(Math.round(level), 1), 3)}.`);
   }
 
-  /** Deactivate CHAKRA — returns to full pass-through. */
+  /**
+   * Initiate the sleep sequence (gradual restoration by default).
+   * @param sequence  'gradual' steps down one level at a time; 'immediate' snaps back instantly.
+   * @param initiatedBy  Optional identifier for audit log.
+   */
+  initiateSleep(sequence?: 'gradual' | 'immediate', initiatedBy?: string): void {
+    this.activationController.initiateSleep(sequence, initiatedBy);
+  }
+
+  /** Immediate deactivation alias — equivalent to initiateSleep('immediate'). */
   deactivate(): void {
-    this.dispatcher.setActivationState({ active: false, currentLevel: 0 });
+    this.activationController.initiateSleep('immediate');
     logger.info('Deactivated. Full pass-through restored.');
   }
 
@@ -218,6 +234,11 @@ export class ChakraInstance {
     return this.rpmEngine.getState();
   }
 
+  /** Full activation audit log — most recent entry last. */
+  getActivationLog(): ReturnType<ActivationController['getLog']> {
+    return this.activationController.getLog();
+  }
+
   /** State of all known blocks at the current activation level. */
   getBlockStates(): BlockState[] {
     const level = this.dispatcher.getActivationState().currentLevel;
@@ -233,9 +254,10 @@ export class ChakraInstance {
 
   // ─── Config management ─────────────────────────────────────────────────────
 
-  /** Apply a partial config update without restart. Note: threshold changes require restart. */
+  /** Apply a partial config update without restart. Takes effect on next evaluation cycle. */
   updateConfig(patch: Partial<ChakraConfig>): void {
     this.config = { ...this.config, ...patch };
+    this.activationController.updateConfig(this.config);
   }
 
   /** Reload config file from disk. Keeps existing config on failure (CHAKRA Rule #4). */
@@ -251,6 +273,7 @@ export class ChakraInstance {
 
   /** Gracefully shut down all background services. */
   shutdown(): void {
+    this.activationController.stop();
     if (this.syncInterval !== null) {
       clearInterval(this.syncInterval);
       this.syncInterval = null;
@@ -307,72 +330,20 @@ export class ChakraInstance {
     this.policyEngine.updateRules(rules);
   }
 
-  /**
-   * 5-second background interval: push RPM state to Policy Engine,
-   * and run auto-mode activation check if configured.
-   */
-  private startSyncInterval(): void {
+  /** Push RPM state to Policy Engine every tick so rpm_above/rpm_below conditions work. */
+  private startRPMSyncInterval(): void {
     const intervalMs = (this.config.rpm_engine?.update_interval_seconds ?? DEFAULT_RPM_INTERVAL_SECONDS) * 1000;
 
     this.syncInterval = setInterval(() => {
       try {
-        const rpmState = this.rpmEngine.getState();
-        this.policyEngine.setRPMState(rpmState);
-
-        if (this.config.mode === 'auto') {
-          this.checkAutoActivation(rpmState.global);
-        }
+        this.policyEngine.setRPMState(this.rpmEngine.getState());
       } catch {
         /* background timer must never propagate exceptions */
       }
     }, intervalMs);
 
-    // Allow the process to exit even if this interval is still running
     if (typeof this.syncInterval.unref === 'function') {
       this.syncInterval.unref();
-    }
-  }
-
-  /**
-   * Auto-mode activation logic.
-   * Activates when RPM has been above threshold for sustained_seconds.
-   * Deactivates when RPM has been below deactivate threshold for sustained_seconds.
-   */
-  private checkAutoActivation(globalRpm: number): void {
-    const isActive = this.dispatcher.isActive();
-    const now = Date.now();
-
-    if (!isActive) {
-      const threshold = this.config.activate_when?.rpm_threshold ?? DEFAULT_RPM_ACTIVATE_THRESHOLD;
-      const sustainedMs = (this.config.activate_when?.sustained_seconds ?? DEFAULT_ACTIVATE_SUSTAINED_SECONDS) * 1000;
-
-      if (globalRpm >= threshold) {
-        if (this.thresholdExceededSince === null) {
-          this.thresholdExceededSince = now;
-        } else if (now - this.thresholdExceededSince >= sustainedMs) {
-          this.dispatcher.setActivationState({ active: true, currentLevel: 1 });
-          this.thresholdExceededSince = null;
-          logger.info(`Auto-activated at level 1 (RPM: ${globalRpm}).`);
-        }
-      } else {
-        this.thresholdExceededSince = null;
-      }
-
-    } else {
-      const deactivateBelow = this.config.deactivate_when?.rpm_below ?? DEFAULT_RPM_DEACTIVATE_THRESHOLD;
-      const sustainedMs = (this.config.deactivate_when?.sustained_seconds ?? DEFAULT_DEACTIVATE_SUSTAINED_SECONDS) * 1000;
-
-      if (globalRpm < deactivateBelow) {
-        if (this.thresholdBelowSince === null) {
-          this.thresholdBelowSince = now;
-        } else if (now - this.thresholdBelowSince >= sustainedMs) {
-          this.dispatcher.setActivationState({ active: false, currentLevel: 0 });
-          this.thresholdBelowSince = null;
-          logger.info(`Auto-deactivated (RPM: ${globalRpm}).`);
-        }
-      } else {
-        this.thresholdBelowSince = null;
-      }
     }
   }
 }
@@ -413,6 +384,13 @@ export {
   type PolicyAction,
   type PolicyEngineConfig,
 } from './core/policy-engine';
+export {
+  ActivationController,
+  type ActivationLogEntry,
+  type ActivationControllerConfig,
+  type RestoreSequence,
+  type LogEntryKind,
+} from './core/activation';
 export { default as RPMEngine } from './background/rpm-engine';
 export type { ChakraConfig } from './config/loader';
 
