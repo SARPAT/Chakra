@@ -25,7 +25,8 @@ function createMockWeightProvider(weight: number): WeightProvider {
 }
 
 function createMockPolicyProvider(outcome: DispatchOutcome | null): PolicyProvider {
-  return { evaluate: vi.fn().mockReturnValue(outcome) };
+  // PolicyProvider contract requires frozen outcomes — freeze mock return values
+  return { evaluate: vi.fn().mockReturnValue(outcome ? Object.freeze(outcome) : null) };
 }
 
 function createMockSessionProvider(session: SessionContext | null): SessionProvider {
