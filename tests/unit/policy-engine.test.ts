@@ -443,6 +443,18 @@ describe('PolicyEngine', () => {
       const engine = makeEngine([makeRule('r', { path_matches: '/api/checkout/*' }, SERVE_FULLY_ACTION)]);
       expect(engine.evaluate('GET', '/public/home', makeRoute(), null, 2)).toBeNull();
     });
+
+    it('matches multiple ** segments in one pattern', () => {
+      const engine = makeEngine([makeRule('r', { path_matches: '/api/**/v2/**' }, SERVE_FULLY_ACTION)]);
+      expect(engine.evaluate('GET', '/api/products/v2/list', makeRoute(), null, 2)?.type).toBe('SERVE_FULLY');
+    });
+
+    it('does not match literal ? as quantifier (escaped correctly)', () => {
+      const engine = makeEngine([makeRule('r', { path_matches: '/api/item?' }, SERVE_FULLY_ACTION)]);
+      // ? is literal — should not act as "0 or 1 of previous char"
+      expect(engine.evaluate('GET', '/api/item', makeRoute(), null, 2)).toBeNull();
+      expect(engine.evaluate('GET', '/api/item?', makeRoute(), null, 2)?.type).toBe('SERVE_FULLY');
+    });
   });
 
   describe('block condition', () => {
@@ -674,6 +686,22 @@ describe('PolicyEngine', () => {
       // Engine should not throw — catch block returns null
       const result = engine.evaluate('GET', '/', makeRoute(), badSession, 2);
       expect(result).toBeNull();
+    });
+
+    it('constructor falls back to empty rules on malformed config', () => {
+      // Passing null rules should not throw
+      const engine = new PolicyEngine({ rules: null as unknown as [] });
+      expect(engine.getRuleCount()).toBe(0);
+      expect(engine.evaluate('GET', '/', makeRoute(), null, 2)).toBeNull();
+    });
+
+    it('updateRules retains existing rules on compile failure', () => {
+      const engine = makeEngine([makeRule('existing', { block: 'test-block' }, SERVE_FULLY_ACTION)]);
+      expect(engine.evaluate('GET', '/', makeRoute(), null, 2)?.type).toBe('SERVE_FULLY');
+      // Pass null to force a compile error
+      engine.updateRules(null as unknown as []);
+      // Existing rules should still be in place
+      expect(engine.evaluate('GET', '/', makeRoute(), null, 2)?.type).toBe('SERVE_FULLY');
     });
   });
 
