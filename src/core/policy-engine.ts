@@ -344,7 +344,12 @@ export class PolicyEngine implements PolicyProvider {
   private rpmState: Readonly<RPMState> | null = null;
 
   constructor(config: PolicyEngineConfig) {
-    this.compiledRules = compileRules(config.rules);
+    try {
+      this.compiledRules = compileRules(config.rules);
+    } catch {
+      // Malformed rules — start with empty set rather than crashing (CHAKRA Rule #1)
+      this.compiledRules = [];
+    }
   }
 
   /**
