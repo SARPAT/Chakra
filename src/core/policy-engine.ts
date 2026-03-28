@@ -96,16 +96,18 @@ const DAYS_OF_WEEK = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'f
 
 // ─── Condition compilers ──────────────────────────────────────────────────────
 
+// Pre-built regex for glob placeholder replacement (global flag = replace all occurrences)
+const DOUBLE_STAR_RE = /\x00DS\x00/g;
+
 /** Compile a glob pattern string into a pre-built RegExp (done once at startup) */
 function compileGlob(pattern: string): RegExp {
-  // Escape regex special chars, then convert globs in two passes using a placeholder
-  // so single-* replacement doesn't corrupt the .* from **
-  const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&');
-  const DOUBLE_STAR = '\x00DS\x00';
+  // Escape regex special chars (including ?), then convert globs in two passes using a
+  // placeholder so single-* replacement doesn't corrupt the .* produced by **
+  const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&');
   const regexStr = escaped
-    .replace(/\*\*/g, DOUBLE_STAR)      // protect ** first
-    .replace(/\*/g, '[^/]*')            // single * → within-segment match
-    .replace(DOUBLE_STAR, '.*');        // ** → cross-segment match
+    .replace(/\*\*/g, '\x00DS\x00')    // protect ** first
+    .replace(/\*/g, '[^/]*')           // single * → within-segment match
+    .replace(DOUBLE_STAR_RE, '.*');    // ** → cross-segment match (all occurrences)
   return new RegExp(`^${regexStr}$`);
 }
 
