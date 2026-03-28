@@ -402,7 +402,19 @@ export type {
   UnmatchedEndpointMode, SuspendedBlockResponseType, SuspendedBlockConfig,
   BlockDefinition, RingMapConfig, LevelState,
   ActivationState, DispatcherMetrics,
+  RPMHistoryEntry, IncidentReport,
 } from './types';
+export {
+  DashboardAPI,
+  type DashboardAPIConfig,
+  type PoliciesResponse,
+  type PolicySuggestion,
+  type RPMResponse,
+  type BlocksResponse,
+  type LearningResponse,
+  type HistoryResponse,
+} from './dashboard/api';
+export { DashboardServer, type DashboardServerConfig } from './dashboard/server';
 
 export { RingMapper } from './core/ring-mapper';
 export { Dispatcher } from './core/dispatcher';
