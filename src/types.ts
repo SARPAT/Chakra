@@ -103,6 +103,36 @@ export interface LevelState {
   suspendedBlocks: readonly string[];
 }
 
+// --- Dashboard types ---
+
+/** A single RPM reading stored for historical chart display */
+export interface RPMHistoryEntry {
+  timestamp: number;
+  rpm: number;
+}
+
+/** Auto-generated incident report produced on every CHAKRA deactivation */
+export interface IncidentReport {
+  id: string;
+  startTime: number;
+  endTime: number;
+  durationMs: number;
+  mode: 'manual' | 'auto';
+  initiatedBy?: string;
+  triggerReason?: string;
+  rpmAtActivation: number;
+  peakRpm: number;
+  levelTimeline: Array<{ timestamp: number; level: number; note?: string }>;
+  requests: {
+    total: number;
+    serveFully: number;
+    serveLimited: number;
+    suspended: number;
+  };
+  weightRescues: number;
+  policyRescues: number;
+}
+
 // --- Dispatcher types ---
 
 /** Activation state — Activation component writes, Dispatcher reads */
