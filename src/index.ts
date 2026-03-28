@@ -16,6 +16,8 @@ import { ActivationController } from './core/activation';
 import RPMEngine from './background/rpm-engine';
 import { loadConfig, type ChakraConfig } from './config/loader';
 import { createExpressMiddleware, createRPMRecorder } from './integrations/express';
+import { DashboardAPI } from './dashboard/api';
+import { DashboardServer } from './dashboard/server';
 import { logger, printStartupBanner } from './utils/logger';
 import {
   DEFAULT_WEIGHT_HIGH,
