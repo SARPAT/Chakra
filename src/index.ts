@@ -1,13 +1,434 @@
-// CHAKRA Middleware — Entry point, public API
-// Usage:
-//   const chakra = require('chakra-middleware');
-//   app.use(chakra.middleware());
-//   app.get('/checkout', chakra.block('payment-block'), handler);
+// CHAKRA Middleware — Entry point and public API
+//
+// Usage (Express):
+//   const { chakra } = require('chakra-middleware');
+//   const chakraInstance = chakra('./chakra.config.yaml');
+//   app.use(chakraInstance.middleware());
+//   app.post('/api/payment', chakraInstance.block('payment-block'), handler);
 
-export {
+import type { Request, Response, NextFunction, RequestHandler } from 'express';
+import type { BlockState, DispatcherMetrics, RPMState } from './types';
+import { RingMapper } from './core/ring-mapper';
+import { Dispatcher } from './core/dispatcher';
+import { WeightEngine } from './core/weight-engine';
+import { PolicyEngine } from './core/policy-engine';
+import RPMEngine from './background/rpm-engine';
+import { loadConfig, type ChakraConfig } from './config/loader';
+import { createExpressMiddleware, createRPMRecorder } from './integrations/express';
+import { logger, printStartupBanner } from './utils/logger';
+import {
+  DEFAULT_WEIGHT_HIGH,
+  DEFAULT_WEIGHT_LOW,
+  DEFAULT_RPM_ACTIVATE_THRESHOLD,
+  DEFAULT_RPM_DEACTIVATE_THRESHOLD,
+  DEFAULT_ACTIVATE_SUSTAINED_SECONDS,
+  DEFAULT_DEACTIVATE_SUSTAINED_SECONDS,
+  DEFAULT_DASHBOARD_PORT,
+  DEFAULT_RPM_INTERVAL_SECONDS,
+} from './config/defaults';
+
+// ─── Public API types ─────────────────────────────────────────────────────────
+
+/** Current status snapshot returned by chakraInstance.status() */
+export interface ChakraStatus {
+  active: boolean;
+  mode: 'manual' | 'auto';
+  currentLevel: number;
+  rpm: number;
+  rpmPhase: 1 | 2 | 3;
+  disabled: boolean;
+}
+
+// ─── ChakraInstance ───────────────────────────────────────────────────────────
+
+export class ChakraInstance {
+  private readonly configPath: string;
+  private config: ChakraConfig;
+
+  // Core components
+  private readonly ringMapper: RingMapper;
+  private readonly weightEngine: WeightEngine;
+  private readonly policyEngine: PolicyEngine;
+  private readonly dispatcher: Dispatcher;
+  private readonly rpmEngine: RPMEngine;
+
+  // State
+  private disabled = false;
+  private registeredRoutes = new Set<string>();  // dedup for block() lazy registration
+
+  // Auto-mode activation tracking
+  private thresholdExceededSince: number | null = null;
+  private thresholdBelowSince: number | null = null;
+  private syncInterval: ReturnType<typeof setInterval> | null = null;
+
+  constructor(configPath: string) {
+    this.configPath = configPath;
+
+    // ── Step 1: Load config ──────────────────────────────────────────────────
+    let config: ChakraConfig = { mode: 'manual' };
+    try {
+      config = loadConfig(configPath);
+    } catch (err) {
+      logger.error(`Config error: ${err instanceof Error ? err.message : String(err)}`);
+      logger.error('CHAKRA disabled. App running without CHAKRA protection.');
+      this.disabled = true;
+    }
+    this.config = config;
+
+    // ── Step 2: Build Ring Map ───────────────────────────────────────────────
+    this.ringMapper = new RingMapper({
+      unmatchedEndpointHandling: config.ring_mapper?.unmatched_endpoint_handling ?? 'default-block',
+    });
+
+    // Register always_protect and degrade_first paths from config
+    this.applyProtectionConfig(config);
+
+    // ── Step 3: Build core components ───────────────────────────────────────
+    this.weightEngine = new WeightEngine({
+      tierConfig: config.weight_engine?.user_tier?.tiers,
+    });
+
+    this.policyEngine = new PolicyEngine({ rules: [] });
+
+    // Apply always_protect as PolicyEngine rules (serve_fully override for protected paths)
+    this.applyAlwaysProtectRules(config);
+
+    this.dispatcher = new Dispatcher({
+      ringMapper: this.ringMapper,
+      weightOverrideHigh: config.weight_engine?.serve_fully_threshold ?? DEFAULT_WEIGHT_HIGH,
+      weightOverrideLow: config.weight_engine?.serve_limited_threshold ?? DEFAULT_WEIGHT_LOW,
+      weightProvider: this.weightEngine,
+      policyProvider: this.policyEngine,
+      sessionProvider: undefined,  // Session Cache not yet built (CP1)
+    });
+
+    // ── Step 4: RPM Engine ───────────────────────────────────────────────────
+    this.rpmEngine = new RPMEngine();
+
+    if (!this.disabled) {
+      this.rpmEngine.start();
+      this.startSyncInterval();
+    }
+
+    // ── Step 5: Startup banner ───────────────────────────────────────────────
+    printStartupBanner({
+      configPath,
+      endpointCount: countRegisteredEndpoints(this.ringMapper),
+      blockCount: countRegisteredBlocks(this.ringMapper),
+      mode: config.mode,
+      shadowModeAvailable: false,    // CP1 — not yet built
+      sessionCacheAvailable: false,  // CP1 — not yet built
+      dashboardAvailable: false,     // CP8 — not yet built
+      dashboardPort: config.dashboard?.port ?? DEFAULT_DASHBOARD_PORT,
+      disabled: this.disabled,
+    });
+  }
+
+  // ─── Framework integration ─────────────────────────────────────────────────
+
+  /**
+   * Returns the Express middleware function.
+   * Mount before all routes: app.use(chakraInstance.middleware())
+   */
+  middleware(): RequestHandler {
+    if (this.disabled) {
+      // Pass-through — CHAKRA disabled due to config error
+      return (_req: Request, _res: Response, next: NextFunction) => next();
+    }
+
+    const dispatchMw = createExpressMiddleware(this.dispatcher);
+    const rpmRecorder = createRPMRecorder(
+      this.rpmEngine,
+      (method, path) => this.ringMapper.lookup(method, path).block,
+    );
+
+    // RPM recording wraps dispatch: recorder starts timing, then dispatcher decides
+    return (req: Request, res: Response, next: NextFunction): void => {
+      rpmRecorder(req, res, () => {
+        dispatchMw(req, res, next);
+      });
+    };
+  }
+
+  /**
+   * Returns a route-level middleware that registers this endpoint with the Ring Map.
+   * Add per route: app.get('/api/products', chakraInstance.block('browse-block'), handler)
+   *
+   * Registration is lazy (happens on first request). The first request to an unregistered
+   * route always passes through (default-block is never suspended).
+   */
+  block(blockName: string): RequestHandler {
+    return (req: Request, _res: Response, next: NextFunction): void => {
+      const routeKey = `${req.method.toUpperCase()} ${req.path}`;
+      if (!this.registeredRoutes.has(routeKey)) {
+        this.registeredRoutes.add(routeKey);
+        try {
+          this.ringMapper.registerRoute(req.method, req.path, blockName);
+          this.ringMapper.compile();
+        } catch {
+          /* registration failure must never surface to the app */
+        }
+      }
+      next();
+    };
+  }
+
+  // ─── Manual activation controls ───────────────────────────────────────────
+
+  /** Activate CHAKRA at the given level (default: 1). */
+  activate(level = 1): void {
+    const clamped = Math.min(Math.max(Math.round(level), 1), 3);
+    this.dispatcher.setActivationState({ active: true, currentLevel: clamped });
+    logger.info(`Activated at level ${clamped}.`);
+  }
+
+  /** Deactivate CHAKRA — returns to full pass-through. */
+  deactivate(): void {
+    this.dispatcher.setActivationState({ active: false, currentLevel: 0 });
+    logger.info('Deactivated. Full pass-through restored.');
+  }
+
+  // ─── Observability ─────────────────────────────────────────────────────────
+
+  /** Current operational status snapshot. */
+  status(): ChakraStatus {
+    const activation = this.dispatcher.getActivationState();
+    const rpmState = this.rpmEngine.getState();
+    return {
+      active: activation.active,
+      mode: this.config.mode,
+      currentLevel: activation.currentLevel,
+      rpm: rpmState.global,
+      rpmPhase: rpmState.phase,
+      disabled: this.disabled,
+    };
+  }
+
+  /** Current dispatcher metrics snapshot. */
+  getMetrics(): DispatcherMetrics {
+    return this.dispatcher.getMetrics();
+  }
+
+  /** Current RPM Engine state snapshot. */
+  getRPM(): RPMState {
+    return this.rpmEngine.getState();
+  }
+
+  /** State of all known blocks at the current activation level. */
+  getBlockStates(): BlockState[] {
+    const level = this.dispatcher.getActivationState().currentLevel;
+    const levelMap = this.ringMapper.getLevelMap();
+    if (level < 0 || level >= levelMap.length) return [];
+
+    const allBlocks = [
+      ...levelMap[level].activeBlocks,
+      ...levelMap[level].suspendedBlocks,
+    ];
+    return allBlocks.map(b => ({ ...this.ringMapper.getBlockState(b, level) }));
+  }
+
+  // ─── Config management ─────────────────────────────────────────────────────
+
+  /** Apply a partial config update without restart. Note: threshold changes require restart. */
+  updateConfig(patch: Partial<ChakraConfig>): void {
+    this.config = { ...this.config, ...patch };
+  }
+
+  /** Reload config file from disk. Keeps existing config on failure (CHAKRA Rule #4). */
+  reloadConfig(): void {
+    try {
+      this.config = loadConfig(this.configPath);
+    } catch (err) {
+      logger.warn(`Config reload failed, keeping existing config: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  // ─── Lifecycle ─────────────────────────────────────────────────────────────
+
+  /** Gracefully shut down all background services. */
+  shutdown(): void {
+    if (this.syncInterval !== null) {
+      clearInterval(this.syncInterval);
+      this.syncInterval = null;
+    }
+    this.rpmEngine.stop();
+    this.dispatcher.setActivationState({ active: false, currentLevel: 0 });
+    logger.info('Shut down.');
+  }
+
+  // ─── Internal helpers ──────────────────────────────────────────────────────
+
+  /**
+   * Register degrade_first paths as low-priority blocks in the Ring Map.
+   * always_protect is handled via PolicyEngine rules (see applyAlwaysProtectRules).
+   */
+  private applyProtectionConfig(config: ChakraConfig): void {
+    if (!config.degrade_first || config.degrade_first.length === 0) return;
+
+    const methods = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'] as const;
+    for (const pathPattern of config.degrade_first) {
+      for (const method of methods) {
+        try {
+          this.ringMapper.registerRoute(method, pathPattern, 'degrade-first-block');
+          // Also register prefix variant to cover sub-paths
+          this.ringMapper.registerRoute(method, `${pathPattern}/*`, 'degrade-first-block');
+        } catch { /* skip duplicate/invalid entries */ }
+      }
+    }
+
+    // Register the block definition with minLevel=3 (first to be suspended)
+    this.ringMapper.registerBlock('degrade-first-block', {
+      endpoints: [],   // endpoints already registered via registerRoute above
+      minLevel: 3,
+      weightBase: 10,
+    });
+
+    this.ringMapper.compile();
+  }
+
+  /**
+   * Apply always_protect paths as high-priority PolicyEngine rules.
+   * Rule: if path starts with protected prefix → serve_fully, regardless of block state.
+   */
+  private applyAlwaysProtectRules(config: ChakraConfig): void {
+    if (!config.always_protect || config.always_protect.length === 0) return;
+
+    const { PolicyEngine: PE } = require('./core/policy-engine');
+    const rules = config.always_protect.map((pathPrefix, i) => ({
+      name: `always-protect-${i}`,
+      if: { path_matches: `${pathPrefix}**` },
+      then: { action: 'serve_fully' as const },
+      priority: 10_000 - i,  // highest priority rules
+    }));
+
+    try {
+      this.policyEngine.updateRules(rules);
+    } catch { /* policy engine never throws, but guard anyway */ }
+  }
+
+  /**
+   * 5-second background interval: push RPM state to Policy Engine,
+   * and run auto-mode activation check if configured.
+   */
+  private startSyncInterval(): void {
+    const intervalMs = (this.config.rpm_engine?.update_interval_seconds ?? DEFAULT_RPM_INTERVAL_SECONDS) * 1000;
+
+    this.syncInterval = setInterval(() => {
+      try {
+        const rpmState = this.rpmEngine.getState();
+        this.policyEngine.setRPMState(rpmState);
+
+        if (this.config.mode === 'auto') {
+          this.checkAutoActivation(rpmState.global);
+        }
+      } catch {
+        /* background timer must never propagate exceptions */
+      }
+    }, intervalMs);
+
+    // Allow the process to exit even if this interval is still running
+    if (typeof this.syncInterval.unref === 'function') {
+      this.syncInterval.unref();
+    }
+  }
+
+  /**
+   * Auto-mode activation logic.
+   * Activates when RPM has been above threshold for sustained_seconds.
+   * Deactivates when RPM has been below deactivate threshold for sustained_seconds.
+   */
+  private checkAutoActivation(globalRpm: number): void {
+    const isActive = this.dispatcher.isActive();
+    const now = Date.now();
+
+    if (!isActive) {
+      const threshold = this.config.activate_when?.rpm_threshold ?? DEFAULT_RPM_ACTIVATE_THRESHOLD;
+      const sustainedMs = (this.config.activate_when?.sustained_seconds ?? DEFAULT_ACTIVATE_SUSTAINED_SECONDS) * 1000;
+
+      if (globalRpm >= threshold) {
+        if (this.thresholdExceededSince === null) {
+          this.thresholdExceededSince = now;
+        } else if (now - this.thresholdExceededSince >= sustainedMs) {
+          this.dispatcher.setActivationState({ active: true, currentLevel: 1 });
+          this.thresholdExceededSince = null;
+          logger.info(`Auto-activated at level 1 (RPM: ${globalRpm}).`);
+        }
+      } else {
+        this.thresholdExceededSince = null;
+      }
+
+    } else {
+      const deactivateBelow = this.config.deactivate_when?.rpm_below ?? DEFAULT_RPM_DEACTIVATE_THRESHOLD;
+      const sustainedMs = (this.config.deactivate_when?.sustained_seconds ?? DEFAULT_DEACTIVATE_SUSTAINED_SECONDS) * 1000;
+
+      if (globalRpm < deactivateBelow) {
+        if (this.thresholdBelowSince === null) {
+          this.thresholdBelowSince = now;
+        } else if (now - this.thresholdBelowSince >= sustainedMs) {
+          this.dispatcher.setActivationState({ active: false, currentLevel: 0 });
+          this.thresholdBelowSince = null;
+          logger.info(`Auto-deactivated (RPM: ${globalRpm}).`);
+        }
+      } else {
+        this.thresholdBelowSince = null;
+      }
+    }
+  }
+}
+
+// ─── Factory function ─────────────────────────────────────────────────────────
+
+/**
+ * Create a CHAKRA middleware instance.
+ *
+ * @param configPath Path to chakra.config.yaml
+ * @returns ChakraInstance ready to mount as middleware
+ *
+ * @example
+ * const chakraInstance = chakra('./chakra.config.yaml');
+ * app.use(chakraInstance.middleware());
+ */
+export function chakra(configPath: string): ChakraInstance {
+  return new ChakraInstance(configPath);
+}
+
+// ─── Re-exports ───────────────────────────────────────────────────────────────
+
+export type {
   SessionContext, RouteInfo, SuspendedResponse, DispatchOutcome,
   RPMState, BlockState, RecordRequestParams, BaselineConfig,
   UnmatchedEndpointMode, SuspendedBlockResponseType, SuspendedBlockConfig,
   BlockDefinition, RingMapConfig, LevelState,
   ActivationState, DispatcherMetrics,
 } from './types';
+
+export { RingMapper } from './core/ring-mapper';
+export { Dispatcher } from './core/dispatcher';
+export { WeightEngine } from './core/weight-engine';
+export {
+  PolicyEngine,
+  type PolicyRule,
+  type PolicyConditions,
+  type PolicyAction,
+  type PolicyEngineConfig,
+} from './core/policy-engine';
+export { default as RPMEngine } from './background/rpm-engine';
+export type { ChakraConfig } from './config/loader';
+
+// ─── Internal helpers (module-level) ─────────────────────────────────────────
+
+function countRegisteredEndpoints(ringMapper: RingMapper): number {
+  let count = 0;
+  for (const level of ringMapper.getLevelMap()) {
+    count = Math.max(count, level.activeBlocks.length + level.suspendedBlocks.length);
+  }
+  // Use the unmatched map size as a proxy for registered endpoint count
+  // (actual count is internal to RingMapper — using block count as approximation)
+  return count;
+}
+
+function countRegisteredBlocks(ringMapper: RingMapper): number {
+  const levelMap = ringMapper.getLevelMap();
+  if (levelMap.length === 0) return 0;
+  return levelMap[0].activeBlocks.length + levelMap[0].suspendedBlocks.length;
+}
