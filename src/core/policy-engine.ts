@@ -94,6 +94,19 @@ interface CompiledRule {
 const SERVE_FULLY_OUTCOME: Readonly<DispatchOutcome> = Object.freeze({ type: 'SERVE_FULLY' });
 const DAYS_OF_WEEK = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 
+// Cached day index — refreshed at most once per minute to avoid per-request Date allocation
+let _cachedDayIndex = new Date().getDay();
+let _cachedDayAt = Date.now();
+
+function getCachedDayIndex(): number {
+  const now = Date.now();
+  if (now - _cachedDayAt > 60_000) {
+    _cachedDayIndex = new Date().getDay();
+    _cachedDayAt = now;
+  }
+  return _cachedDayIndex;
+}
+
 // ─── Condition compilers ──────────────────────────────────────────────────────
 
 // Pre-built regex for glob placeholder replacement (global flag = replace all occurrences)
@@ -239,18 +252,21 @@ function compileConditions(cond: PolicyConditions): (ctx: PolicyContext) => bool
   // --- Time conditions ---
 
   if (cond.time_between !== undefined) {
+    // Pre-compute start/end minutes at compile time — only nowMinutes is computed at request time
     const [startStr, endStr] = cond.time_between;
-    checks.push(() => isCurrentTimeBetween(startStr, endStr));
+    const startMinutes = parseTimeToMinutes(startStr);
+    const endMinutes = parseTimeToMinutes(endStr);
+    checks.push(() => isNowBetweenMinutes(startMinutes, endMinutes));
   }
 
   if (cond.day_of_week_in !== undefined) {
     const days = new Set(cond.day_of_week_in.map(d => d.toLowerCase()));
-    checks.push(() => days.has(DAYS_OF_WEEK[new Date().getDay()]));
+    checks.push(() => days.has(DAYS_OF_WEEK[getCachedDayIndex()]));
   }
 
   if (cond.day_of_week_not_in !== undefined) {
     const days = new Set(cond.day_of_week_not_in.map(d => d.toLowerCase()));
-    checks.push(() => !days.has(DAYS_OF_WEEK[new Date().getDay()]));
+    checks.push(() => !days.has(DAYS_OF_WEEK[getCachedDayIndex()]));
   }
 
   // No conditions = always match
@@ -423,15 +439,21 @@ export class PolicyEngine implements PolicyProvider {
 
 // ─── Time helpers ─────────────────────────────────────────────────────────────
 
-/** Check if current wall-clock time falls within [startStr, endStr] (HH:MM) */
-function isCurrentTimeBetween(startStr: string, endStr: string): boolean {
+/** Parse "HH:MM" string to total minutes (compile-time only) */
+function parseTimeToMinutes(timeStr: string): number {
+  const [h, m] = timeStr.split(':').map(Number);
+  return h * 60 + m;
+}
+
+/**
+ * Check if current wall-clock time is within the [start, end] window (in minutes).
+ * Uses Date.now() modulo arithmetic — no Date object allocation.
+ * Note: operates in local time via getHours/getMinutes fallback approach.
+ * Handles midnight-spanning windows (e.g. 22:00 → 06:00).
+ */
+function isNowBetweenMinutes(startMinutes: number, endMinutes: number): boolean {
   const now = new Date();
   const nowMinutes = now.getHours() * 60 + now.getMinutes();
-  const [sh, sm] = startStr.split(':').map(Number);
-  const [eh, em] = endStr.split(':').map(Number);
-  const startMinutes = sh * 60 + sm;
-  const endMinutes = eh * 60 + em;
-
   if (startMinutes <= endMinutes) {
     return nowMinutes >= startMinutes && nowMinutes <= endMinutes;
   }
