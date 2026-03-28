@@ -112,13 +112,35 @@ export class ChakraInstance {
       chakraConfig: config,
     });
 
+    // ── Step 6: Dashboard ────────────────────────────────────────────────────
+    this.dashboardAPI = new DashboardAPI({
+      getStatus: () => this.status(),
+      getRPMState: () => this.rpmEngine.getState(),
+      getBlockStates: () => this.getBlockStates(),
+      getActivationLog: () => this.activationController.getLog(),
+      getMetrics: () => this.dispatcher.getMetrics(),
+      getConfig: () => this.config,
+      initialPolicies: [],
+      onPoliciesUpdated: (rules) => this.policyEngine.updateRules(rules),
+      activate: (level, initiatedBy) => this.activationController.activate(level, initiatedBy),
+      initiateSleep: (sequence, initiatedBy) =>
+        this.activationController.initiateSleep(sequence, initiatedBy),
+      updateConfig: (patch) => this.updateConfig(patch),
+    });
+
+    this.dashboardServer = new DashboardServer({
+      api: this.dashboardAPI,
+      port: config.dashboard?.port ?? DEFAULT_DASHBOARD_PORT,
+    });
+
     if (!this.disabled) {
       this.rpmEngine.start();
       this.activationController.start();
       this.startRPMSyncInterval();
+      this.dashboardServer.start();
     }
 
-    // ── Step 5: Startup banner ───────────────────────────────────────────────
+    // ── Step 7: Startup banner ───────────────────────────────────────────────
     printStartupBanner({
       configPath,
       endpointCount: countRegisteredEndpoints(this.ringMapper),
@@ -126,7 +148,7 @@ export class ChakraInstance {
       mode: config.mode,
       shadowModeAvailable: false,    // CP1 — not yet built
       sessionCacheAvailable: false,  // CP1 — not yet built
-      dashboardAvailable: false,     // CP8 — not yet built
+      dashboardAvailable: !this.disabled,
       dashboardPort: config.dashboard?.port ?? DEFAULT_DASHBOARD_PORT,
       disabled: this.disabled,
     });
