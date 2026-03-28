@@ -288,7 +288,7 @@ export class RingMapper {
 
   /** Apply a Shadow Mode suggestion as the ring map. Compiles and activates immediately. */
   applySuggestion(suggestion: RingMapConfig): void {
-    for (const [name, def] of Object.entries(suggestion.blocks)) {
+    for (const [name, def] of Object.entries(suggestion.blocks ?? {})) {
       this.blockRegistry.set(name, def);
     }
     this.compile();

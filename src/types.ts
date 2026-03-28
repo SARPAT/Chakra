@@ -91,7 +91,7 @@ export interface BlockDefinition {
 
 /** Full Ring Map configuration input */
 export interface RingMapConfig {
-  blocks: Record<string, BlockDefinition>;
+  blocks?: Record<string, BlockDefinition>;
   unmatchedEndpointHandling?: UnmatchedEndpointMode;
   maxVersionHistory?: number;
 }
