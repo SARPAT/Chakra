@@ -51,6 +51,8 @@ export class ChakraInstance {
   private readonly dispatcher: Dispatcher;
   private readonly rpmEngine: RPMEngine;
   private readonly activationController: ActivationController;
+  private readonly dashboardAPI: DashboardAPI;
+  private readonly dashboardServer: DashboardServer;
 
   // State
   private disabled = false;
