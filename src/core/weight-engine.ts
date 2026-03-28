@@ -8,7 +8,7 @@ import type { WeightProvider } from './dispatcher';
 
 // --- Signal functions (exported for direct unit testing) ---
 
-/** Signal 2: HTTP method — writes are more intentful than reads */
+/** Signal 2: HTTP method — writes are more intentful than reads. */
 export function calculateMethodSignal(method: string): number {
   switch (method.toUpperCase()) {
     case 'POST':
@@ -111,14 +111,12 @@ export class WeightEngine implements WeightProvider {
     path: string,
   ): number {
     try {
-      // Normalise method once — avoids duplicate toUpperCase() allocations
-      const upperMethod = method.toUpperCase();
-
       // Signal 1 — Block Base Weight (from Ring Map)
       let weight = routeInfo.weightBase;
 
       // Signal 2 — HTTP Method (+15 for writes)
-      weight += calculateMethodSignal(upperMethod);
+      // method is pre-uppercased by Dispatcher.dispatch() before being passed here
+      weight += calculateMethodSignal(method);
 
       // Session staleness check — treat stale sessions as absent
       const session = sessionContext && !isSessionStale(sessionContext)
@@ -142,8 +140,9 @@ export class WeightEngine implements WeightProvider {
       }
 
       // Signal 8 — Developer endpoint override (skip allocation when no overrides configured)
+      // method is pre-uppercased by Dispatcher — no toUpperCase() needed here
       if (this.hasEndpointOverrides) {
-        const endpointKey = `${upperMethod} ${path}`;
+        const endpointKey = `${method} ${path}`;
         weight += this.endpointOverrides[endpointKey] ?? 0;
       }
 
