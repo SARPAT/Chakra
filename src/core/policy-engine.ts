@@ -98,8 +98,14 @@ const DAYS_OF_WEEK = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'f
 
 /** Compile a glob pattern string into a pre-built RegExp (done once at startup) */
 function compileGlob(pattern: string): RegExp {
+  // Escape regex special chars, then convert globs in two passes using a placeholder
+  // so single-* replacement doesn't corrupt the .* from **
   const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&');
-  const regexStr = escaped.replace(/\*\*/g, '.*').replace(/\*/g, '[^/]*');
+  const DOUBLE_STAR = '\x00DS\x00';
+  const regexStr = escaped
+    .replace(/\*\*/g, DOUBLE_STAR)      // protect ** first
+    .replace(/\*/g, '[^/]*')            // single * → within-segment match
+    .replace(DOUBLE_STAR, '.*');        // ** → cross-segment match
   return new RegExp(`^${regexStr}$`);
 }
 
