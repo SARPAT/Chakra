@@ -201,14 +201,14 @@ export class ActivationController {
 
   // ─── Observability ─────────────────────────────────────────────────────────
 
-  /** Full audit log — most recent entry last. Returns a shallow copy. */
+  /** Full audit log — most recent entry last. Returns a deep copy of entries. */
   getLog(): readonly ActivationLogEntry[] {
-    return [...this.log];
+    return this.log.map(e => ({ ...e }));
   }
 
-  /** Last N log entries. */
+  /** Last N log entries. Returns deep copies. */
   getRecentLog(n = 20): readonly ActivationLogEntry[] {
-    return this.log.slice(-n);
+    return this.log.slice(-n).map(e => ({ ...e }));
   }
 
   /** Whether a gradual restoration is currently in progress. */
