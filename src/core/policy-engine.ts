@@ -403,7 +403,11 @@ export class PolicyEngine implements PolicyProvider {
    * Atomic pointer swap — new rules active on next evaluate() call.
    */
   updateRules(rules: PolicyRule[]): void {
-    this.compiledRules = compileRules(rules);
+    try {
+      this.compiledRules = compileRules(rules);
+    } catch {
+      // Keep existing rules on compile failure — better to run stale rules than no rules
+    }
   }
 
   /** Current rule count — Dashboard warns if > 100 (performance budget) */
