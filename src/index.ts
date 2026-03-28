@@ -305,6 +305,7 @@ export class ChakraInstance {
       this.syncInterval = null;
     }
     this.rpmEngine.stop();
+    this.dashboardServer.stop();
     this.dispatcher.setActivationState({ active: false, currentLevel: 0 });
     logger.info('Shut down.');
   }
