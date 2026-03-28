@@ -159,15 +159,19 @@ export class ChakraInstance {
    */
   block(blockName: string): RequestHandler {
     return (req: Request, _res: Response, next: NextFunction): void => {
-      const routeKey = `${req.method.toUpperCase()} ${req.path}`;
-      if (!this.registeredRoutes.has(routeKey)) {
-        this.registeredRoutes.add(routeKey);
-        try {
-          this.ringMapper.registerRoute(req.method, req.path, blockName);
-          this.ringMapper.compile();
-        } catch {
-          /* registration failure must never surface to the app */
+      try {
+        const method = req.method?.toUpperCase();
+        const reqPath = req.path;
+        if (method && reqPath) {
+          const routeKey = `${method} ${reqPath}`;
+          if (!this.registeredRoutes.has(routeKey)) {
+            this.registeredRoutes.add(routeKey);
+            this.ringMapper.registerRoute(method, reqPath, blockName);
+            this.ringMapper.compile();
+          }
         }
+      } catch {
+        /* registration failure must never surface to the app */
       }
       next();
     };
@@ -293,17 +297,14 @@ export class ChakraInstance {
   private applyAlwaysProtectRules(config: ChakraConfig): void {
     if (!config.always_protect || config.always_protect.length === 0) return;
 
-    const { PolicyEngine: PE } = require('./core/policy-engine');
     const rules = config.always_protect.map((pathPrefix, i) => ({
       name: `always-protect-${i}`,
       if: { path_matches: `${pathPrefix}**` },
       then: { action: 'serve_fully' as const },
-      priority: 10_000 - i,  // highest priority rules
+      priority: 10_000 - i,  // highest priority — evaluated before all user rules
     }));
 
-    try {
-      this.policyEngine.updateRules(rules);
-    } catch { /* policy engine never throws, but guard anyway */ }
+    this.policyEngine.updateRules(rules);
   }
 
   /**
