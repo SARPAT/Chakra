@@ -357,13 +357,15 @@ export class ChakraInstance {
     this.policyEngine.updateRules(rules);
   }
 
-  /** Push RPM state to Policy Engine every tick so rpm_above/rpm_below conditions work. */
+  /** Push RPM state to Policy Engine and Dashboard every tick. */
   private startRPMSyncInterval(): void {
     const intervalMs = (this.config.rpm_engine?.update_interval_seconds ?? DEFAULT_RPM_INTERVAL_SECONDS) * 1000;
 
     this.syncInterval = setInterval(() => {
       try {
-        this.policyEngine.setRPMState(this.rpmEngine.getState());
+        const rpmState = this.rpmEngine.getState();
+        this.policyEngine.setRPMState(rpmState);
+        this.dashboardServer.broadcastRPMUpdate(rpmState);
       } catch {
         /* background timer must never propagate exceptions */
       }
