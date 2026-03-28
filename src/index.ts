@@ -231,6 +231,7 @@ export class ChakraInstance {
   /** Immediate deactivation alias — equivalent to initiateSleep('immediate'). */
   deactivate(): void {
     this.activationController.initiateSleep('immediate');
+    this.dashboardAPI.generateIncidentReport();
     logger.info('Deactivated. Full pass-through restored.');
   }
 
