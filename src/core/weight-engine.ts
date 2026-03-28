@@ -86,6 +86,7 @@ export interface WeightEngineConfig {
 export class WeightEngine implements WeightProvider {
   private readonly tierConfig: Readonly<Record<string, number>>;
   private readonly endpointOverrides: Readonly<Record<string, number>>;
+  private readonly hasEndpointOverrides: boolean;
 
   constructor(config?: WeightEngineConfig) {
     this.tierConfig = config?.tierConfig
@@ -94,6 +95,7 @@ export class WeightEngine implements WeightProvider {
     this.endpointOverrides = config?.endpointOverrides
       ? Object.freeze({ ...config.endpointOverrides })
       : Object.freeze({});
+    this.hasEndpointOverrides = Object.keys(this.endpointOverrides).length > 0;
   }
 
   /**
@@ -109,11 +111,14 @@ export class WeightEngine implements WeightProvider {
     path: string,
   ): number {
     try {
+      // Normalise method once — avoids duplicate toUpperCase() allocations
+      const upperMethod = method.toUpperCase();
+
       // Signal 1 — Block Base Weight (from Ring Map)
       let weight = routeInfo.weightBase;
 
       // Signal 2 — HTTP Method (+15 for writes)
-      weight += calculateMethodSignal(method);
+      weight += calculateMethodSignal(upperMethod);
 
       // Session staleness check — treat stale sessions as absent
       const session = sessionContext && !isSessionStale(sessionContext)
@@ -136,9 +141,11 @@ export class WeightEngine implements WeightProvider {
         weight += calculateTierSignal(session.userTier, this.tierConfig);
       }
 
-      // Signal 8 — Developer endpoint override
-      const endpointKey = `${method.toUpperCase()} ${path}`;
-      weight += this.endpointOverrides[endpointKey] ?? 0;
+      // Signal 8 — Developer endpoint override (skip allocation when no overrides configured)
+      if (this.hasEndpointOverrides) {
+        const endpointKey = `${upperMethod} ${path}`;
+        weight += this.endpointOverrides[endpointKey] ?? 0;
+      }
 
       // Cap at 100, floor at 0
       return Math.min(Math.max(weight, 0), 100);
