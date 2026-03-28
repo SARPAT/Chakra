@@ -25,7 +25,7 @@ export interface PolicyProvider {
     routeInfo: RouteInfo,
     sessionContext: SessionContext | null,
     currentLevel: number,
-  ): DispatchOutcome | null;
+  ): Readonly<DispatchOutcome> | null;  // implementations must return frozen outcomes
 }
 
 /** Session Context Cache provider — implemented by CP1/CP4, consumed by Dispatcher */
@@ -92,7 +92,7 @@ export class Dispatcher {
    * Decide the outcome for a single HTTP request.
    * Budget: < 2ms total. Never throws. Read-only — no state writes.
    */
-  dispatch(method: string, path: string, sessionId?: string): Readonly<DispatchOutcome> {
+  dispatch(rawMethod: string, path: string, sessionId?: string): Readonly<DispatchOutcome> {
     try {
       // STEP 1 — Activation check (< 0.1ms)
       // When sleeping: single boolean check + return. No writes, no lookups.
@@ -102,6 +102,9 @@ export class Dispatcher {
       }
 
       this._metrics.totalRequests++;
+
+      // Normalise method once — all downstream consumers receive uppercase string
+      const method = rawMethod.toUpperCase();
 
       // STEP 2 — Ring Map lookup (< 0.1ms)
       const routeInfo = this.ringMapper.lookup(method, path);
@@ -143,7 +146,7 @@ export class Dispatcher {
         if (policyOutcome) {
           this._metrics.policyOverrides++;
           trackPolicyOutcome(this._metrics, policyOutcome, routeInfo.block);
-          return Object.freeze(policyOutcome);
+          return policyOutcome;  // PolicyProvider contract: implementations return frozen outcomes
         }
       }
 
