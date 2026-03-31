@@ -6,6 +6,7 @@
 // Never throws — all handlers catch internally and return safe responses.
 
 import * as http from 'http';
+import * as path from 'path';
 import * as express from 'express';
 import type { Request, Response, NextFunction } from 'express';
 import { WebSocketServer, WebSocket } from 'ws';
@@ -117,6 +118,10 @@ export class DashboardServer {
   }
 
   private mountRoutes(app: express.Express): void {
+    // Dashboard UI — serve the HTML frontend at root
+    const htmlPath = path.join(__dirname, 'dashboard.html');
+    app.get('/', (_req, res) => res.sendFile(htmlPath));
+
     // GET endpoints
     app.get('/api/status', this.handleGetStatus.bind(this));
     app.get('/api/rpm', this.handleGetRPM.bind(this));
