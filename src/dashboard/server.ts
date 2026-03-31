@@ -135,6 +135,9 @@ export class DashboardServer {
     app.delete('/api/policies/:name', this.handleDeletePolicy.bind(this));
     app.post('/api/presets/:name', this.handleActivatePreset.bind(this));
     app.post('/api/settings', this.handleUpdateSettings.bind(this));
+
+    // Container Bridge — always mounted; returns 503 if no webhook adapter configured
+    app.post('/api/infrastructure-signal', this.handleInfrastructureSignal.bind(this));
   }
 
   // ─── Route handlers ─────────────────────────────────────────────────────────
@@ -242,6 +245,21 @@ export class DashboardServer {
   private handleUpdateSettings(req: Request, res: Response): void {
     try {
       this.api.updateSettings(req.body);
+      res.json({ ok: true });
+    } catch (err) { this.internalError(res, err); }
+  }
+
+  private handleInfrastructureSignal(req: Request, res: Response): void {
+    if (!this.webhookAdapter) {
+      res.status(503).json({ error: 'No webhook adapter configured' });
+      return;
+    }
+    try {
+      const accepted = this.webhookAdapter.receiveSignal(req.body);
+      if (!accepted) {
+        res.status(400).json({ error: 'Invalid signal payload. Required: scaling_in_progress (bool), capacity_limit_reached (bool)' });
+        return;
+      }
       res.json({ ok: true });
     } catch (err) { this.internalError(res, err); }
   }
