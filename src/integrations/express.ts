@@ -6,6 +6,42 @@ import type { Dispatcher } from '../core/dispatcher';
 import type RPMEngine from '../background/rpm-engine';
 import type { ShadowModeObserver } from '../background/shadow-mode/observer';
 
+// ─── Shadow Mode observer middleware ─────────────────────────────────────────
+
+/**
+ * Create an Express middleware that feeds every completed request into the
+ * Shadow Mode Observer asynchronously (zero hot-path latency).
+ * Must be mounted before dispatch middleware so response timing is captured.
+ */
+export function createShadowObserverMiddleware(
+  observer: ShadowModeObserver,
+): RequestHandler {
+  return function chakraShadowObserver(req: Request, res: Response, next: NextFunction): void {
+    const startTime = Date.now();
+
+    res.on('finish', () => {
+      observer.observe(
+        {
+          method: req.method,
+          path: req.path,
+          sessionToken: extractSessionId(req),
+          userId: extractUserId(req),
+          userAgent: req.headers['user-agent'],
+          contentLength: parseInt(req.headers['content-length'] ?? '0', 10) || 0,
+          isAuthenticated: !!(req.headers['authorization'] || req.headers['x-api-key']),
+        },
+        {
+          statusCode: res.statusCode,
+          responseTimeMs: Date.now() - startTime,
+          contentLength: parseInt(res.getHeader('content-length') as string ?? '0', 10) || 0,
+        },
+      );
+    });
+
+    next();
+  };
+}
+
 // ─── Session ID extraction ────────────────────────────────────────────────────
 
 /**
@@ -20,6 +56,12 @@ function extractSessionId(req: Request): string | undefined {
   const cookies = (req as Request & { cookies?: Record<string, string> }).cookies;
   if (cookies?.sessionId) return cookies.sessionId;
 
+  return undefined;
+}
+
+function extractUserId(req: Request): string | undefined {
+  const header = req.headers['x-user-id'];
+  if (typeof header === 'string' && header.length > 0) return header;
   return undefined;
 }
 
