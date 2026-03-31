@@ -15,7 +15,7 @@ import { PolicyEngine } from './core/policy-engine';
 import { ActivationController } from './core/activation';
 import RPMEngine from './background/rpm-engine';
 import { loadConfig, type ChakraConfig } from './config/loader';
-import { createExpressMiddleware, createRPMRecorder } from './integrations/express';
+import { createExpressMiddleware, createRPMRecorder, createShadowObserverMiddleware } from './integrations/express';
 import { SessionCache } from './background/session-cache';
 import { ShadowModeObserver } from './background/shadow-mode/observer';
 import { ShadowModeAnalyser } from './background/shadow-mode/analyser';
@@ -201,11 +201,15 @@ export class ChakraInstance {
       this.rpmEngine,
       (method, path) => this.ringMapper.lookup(method, path).block,
     );
+    const shadowObserverMw = createShadowObserverMiddleware(this.shadowObserver);
 
-    // RPM recording wraps dispatch: recorder starts timing, then dispatcher decides
+    // Shadow observer and RPM recorder both use res.on('finish') — pure observation,
+    // no latency added. Dispatch middleware decides the outcome.
     return (req: Request, res: Response, next: NextFunction): void => {
-      rpmRecorder(req, res, () => {
-        dispatchMw(req, res, next);
+      shadowObserverMw(req, res, () => {
+        rpmRecorder(req, res, () => {
+          dispatchMw(req, res, next);
+        });
       });
     };
   }
