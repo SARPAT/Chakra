@@ -545,6 +545,32 @@ export { KubernetesAdapter, type KubernetesAdapterConfig, type KubernetesAuthMod
 export { PrometheusAdapter, type PrometheusAdapterConfig, type PrometheusMetricNames } from './integrations/container-bridge/prometheus';
 export { ECSAdapter, type ECSAdapterConfig } from './integrations/container-bridge/ecs';
 export { AdapterManager, type HoldDecision } from './integrations/container-bridge/adapter-manager';
+export { SessionCache, type SessionCacheConfig } from './background/session-cache';
+export {
+  ShadowModeObserver,
+  normalizeEndpoint,
+  classifyDevice,
+  type ObservationRecord,
+  type RequestSnapshot,
+  type ResponseSnapshot,
+  type ObserverConfig,
+} from './background/shadow-mode/observer';
+export {
+  ShadowModeAnalyser,
+  type LearningProgress,
+  type EndpointStats,
+  type BlockSuggestion,
+  type TrafficPattern,
+  type MomentOfValueSignature,
+} from './background/shadow-mode/analyser';
+export {
+  ShadowModeSuggester,
+  type RingMapSuggestion,
+  type RPMThresholdSuggestion,
+  type PolicySuggestion as ShadowPolicySuggestion,
+  type AllSuggestions,
+} from './background/shadow-mode/suggester';
+export { sha256, hashId } from './utils/hasher';
 
 // ─── Internal helpers (module-level) ─────────────────────────────────────────
 
