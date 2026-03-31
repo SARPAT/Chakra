@@ -59,6 +59,10 @@ export class ChakraInstance {
   private readonly policyEngine: PolicyEngine;
   private readonly dispatcher: Dispatcher;
   private readonly rpmEngine: RPMEngine;
+  private readonly sessionCache: SessionCache;
+  private readonly shadowObserver: ShadowModeObserver;
+  private readonly shadowAnalyser: ShadowModeAnalyser;
+  private readonly shadowSuggester: ShadowModeSuggester;
   private readonly activationController: ActivationController;
   private readonly adapterManager: AdapterManager;
   private readonly dashboardAPI: DashboardAPI;
