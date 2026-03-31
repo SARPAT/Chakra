@@ -6,4 +6,5 @@ coverage/
 .env
 *.sqlite
 *.sqlite3
+*.db
 .claude/
