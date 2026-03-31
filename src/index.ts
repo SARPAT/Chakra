@@ -506,6 +506,18 @@ export {
 } from './core/activation';
 export { default as RPMEngine } from './background/rpm-engine';
 export type { ChakraConfig } from './config/loader';
+export type {
+  InfrastructureAdapter,
+  InfrastructureSnapshot,
+  BoolSignal,
+  NumberSignal,
+  Confidence,
+} from './integrations/adapter-interface';
+export { WebhookAdapter, type WebhookSignalPayload } from './integrations/container-bridge/webhook';
+export { KubernetesAdapter, type KubernetesAdapterConfig, type KubernetesAuthMode } from './integrations/container-bridge/kubernetes';
+export { PrometheusAdapter, type PrometheusAdapterConfig, type PrometheusMetricNames } from './integrations/container-bridge/prometheus';
+export { ECSAdapter, type ECSAdapterConfig } from './integrations/container-bridge/ecs';
+export { AdapterManager, type HoldDecision } from './integrations/container-bridge/adapter-manager';
 
 // ─── Internal helpers (module-level) ─────────────────────────────────────────
 
