@@ -51,6 +51,8 @@ export interface ActivationControllerConfig {
   restoreStepIntervalMs?: number;
   /** Override the auto-mode poll interval ms (default: 5000) */
   autoPollIntervalMs?: number;
+  /** Optional Container Bridge adapter manager — enables hold-for-scaling logic */
+  adapterManager?: AdapterManager;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
