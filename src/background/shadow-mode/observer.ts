@@ -74,9 +74,9 @@ const DEFAULT_PURGE_INTERVAL_MS = 60 * 60 * 1_000;   // 1 hour
 
 const PARAM_PATTERNS: [RegExp, string][] = [
   [/\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, '/:uuid'],
+  [/\/[a-f0-9]{24}(?![0-9a-f])/gi, '/:objectid'], // MongoDB ObjectId — must come before numeric patterns
   [/\/\d{10,}/g, '/:id'],             // long numeric IDs (snowflake etc.)
   [/\/\d+/g, '/:id'],                 // short numeric IDs
-  [/\/[a-f0-9]{24}/gi, '/:objectid'], // MongoDB ObjectId
 ];
 
 export function normalizeEndpoint(rawPath: string): string {
