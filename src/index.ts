@@ -141,6 +141,7 @@ export class ChakraInstance {
     this.dashboardServer = new DashboardServer({
       api: this.dashboardAPI,
       port: config.dashboard?.port ?? DEFAULT_DASHBOARD_PORT,
+      webhookAdapter: this.adapterManager.getWebhookAdapter(),
     });
 
     if (!this.disabled) {
