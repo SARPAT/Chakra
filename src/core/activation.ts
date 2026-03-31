@@ -10,6 +10,7 @@
 import type { Dispatcher } from './dispatcher';
 import type RPMEngine from '../background/rpm-engine';
 import type { ChakraConfig } from '../config/loader';
+import type { AdapterManager } from '../integrations/container-bridge/adapter-manager';
 import {
   DEFAULT_RPM_ACTIVATE_THRESHOLD,
   DEFAULT_RPM_DEACTIVATE_THRESHOLD,
