@@ -35,6 +35,7 @@ export class DashboardServer {
   private readonly api: DashboardAPI;
   private readonly port: number;
   private readonly auth?: { username: string; password: string };
+  private readonly webhookAdapter?: WebhookAdapter;
 
   private httpServer: http.Server | null = null;
   private wss: WebSocketServer | null = null;
@@ -43,6 +44,7 @@ export class DashboardServer {
     this.api = config.api;
     this.port = config.port ?? DEFAULT_PORT;
     this.auth = config.auth;
+    this.webhookAdapter = config.webhookAdapter;
   }
 
   // ─── Lifecycle ──────────────────────────────────────────────────────────────
