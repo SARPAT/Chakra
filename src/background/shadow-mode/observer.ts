@@ -181,8 +181,8 @@ export class ShadowModeObserver {
     try {
       const rows = this.db.prepare(
         `SELECT * FROM observations ORDER BY timestamp DESC LIMIT ?`,
-      ).all(limit) as ObservationRecord[];
-      return rows;
+      ).all(limit) as Record<string, unknown>[];
+      return rows.map(r => this.mapRow(r));
     } catch {
       return [];
     }
@@ -236,7 +236,7 @@ export class ShadowModeObserver {
         @responseTimeMs, @statusCode, @requestSize, @responseSize,
         @deviceClass, @isAuthenticated, @sessionDepth
       )
-    `).run(record);
+    `).run({ ...record, isAuthenticated: record.isAuthenticated ? 1 : 0 });
 
     // Update session cache if available
     if (this.sessionCache !== null && this.sessionCache !== undefined && hashedSession !== null) {
@@ -279,6 +279,26 @@ export class ShadowModeObserver {
     };
 
     this.sessionCache!.set(hashedSession, updated);
+  }
+
+  // ─── Row mapping (SQLite snake_case → camelCase) ──────────────────────────────
+
+  private mapRow(r: Record<string, unknown>): ObservationRecord {
+    return {
+      timestamp: r['timestamp'] as number,
+      sessionId: r['session_id'] as string | null,
+      userId: r['user_id'] as string | null,
+      method: r['method'] as string,
+      endpoint: r['endpoint'] as string,
+      rawEndpoint: r['raw_endpoint'] as string,
+      responseTimeMs: r['response_time_ms'] as number,
+      statusCode: r['status_code'] as number,
+      requestSize: r['request_size'] as number,
+      responseSize: r['response_size'] as number,
+      deviceClass: r['device_class'] as string,
+      isAuthenticated: !!(r['is_authenticated'] as number),
+      sessionDepth: r['session_depth'] as number,
+    };
   }
 
   // ─── Schema + maintenance ─────────────────────────────────────────────────────
