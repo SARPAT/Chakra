@@ -1,0 +1,719 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CHAKRA Dashboard</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #0d0f14;
+      --surface:  #151820;
+      --border:   #1f2535;
+      --muted:    #3a4055;
+      --text:     #e2e8f0;
+      --sub:      #7a8299;
+      --blue:     #4f8ef7;
+      --green:    #34d17a;
+      --yellow:   #f5c542;
+      --red:      #f2564a;
+      --purple:   #a78bfa;
+      --radius:   10px;
+      --shadow:   0 2px 12px rgba(0,0,0,.45);
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+      min-height: 100vh;
+    }
+
+    /* ─── Top bar ─────────────────────────────────────────────── */
+    header {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 14px 24px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    header .logo {
+      font-weight: 700;
+      font-size: 17px;
+      letter-spacing: .04em;
+      color: var(--blue);
+    }
+    header .logo span { color: var(--text); }
+    header .spacer { flex: 1; }
+    #ws-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--muted);
+      transition: background .4s;
+    }
+    #ws-dot.live { background: var(--green); box-shadow: 0 0 6px var(--green); }
+    #ws-label { color: var(--sub); font-size: 12px; }
+    #last-updated { color: var(--sub); font-size: 12px; }
+
+    /* ─── Layout ──────────────────────────────────────────────── */
+    main {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 24px;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+    }
+
+    /* ─── Card ────────────────────────────────────────────────── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px 20px;
+      box-shadow: var(--shadow);
+    }
+    .card-title {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: var(--sub);
+      margin-bottom: 10px;
+    }
+
+    /* ─── Status card ─────────────────────────────────────────── */
+    #card-status { grid-column: span 1; }
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 5px 12px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 600;
+      background: var(--muted);
+      color: var(--sub);
+      margin-bottom: 12px;
+    }
+    .status-badge.active   { background: rgba(52,209,122,.15); color: var(--green); }
+    .status-badge.inactive { background: rgba(79,142,247,.12); color: var(--blue); }
+    .status-badge.sleeping { background: rgba(245,197,66,.12); color: var(--yellow); }
+    .status-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+
+    .stat-row { display: flex; justify-content: space-between; margin-top: 6px; }
+    .stat-label { color: var(--sub); }
+    .stat-val { font-weight: 600; }
+
+    /* ─── RPM gauge card ──────────────────────────────────────── */
+    #card-rpm { grid-column: span 1; }
+    .rpm-big {
+      font-size: 48px;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: -.02em;
+      margin-bottom: 4px;
+    }
+    .rpm-sub { color: var(--sub); font-size: 12px; margin-bottom: 14px; }
+    .rpm-bar-track {
+      height: 6px;
+      background: var(--muted);
+      border-radius: 3px;
+      overflow: hidden;
+      margin-bottom: 4px;
+    }
+    .rpm-bar-fill {
+      height: 100%;
+      background: var(--blue);
+      border-radius: 3px;
+      transition: width .6s ease, background .4s;
+      width: 0%;
+    }
+    .rpm-bar-fill.warn  { background: var(--yellow); }
+    .rpm-bar-fill.crit  { background: var(--red); }
+    .rpm-thresholds { display: flex; justify-content: space-between; color: var(--sub); font-size: 11px; }
+
+    /* ─── RPM chart card ──────────────────────────────────────── */
+    #card-chart { grid-column: span 2; }
+    #rpm-canvas { width: 100%; height: 120px; display: block; }
+
+    /* ─── Level card ──────────────────────────────────────────── */
+    #card-level { grid-column: span 1; }
+    .level-display {
+      display: flex;
+      align-items: flex-end;
+      gap: 5px;
+      margin-bottom: 12px;
+    }
+    .level-bar {
+      flex: 1;
+      border-radius: 4px 4px 0 0;
+      background: var(--muted);
+      transition: background .4s, height .4s;
+      min-height: 8px;
+    }
+    .level-bar.active { background: var(--blue); }
+    .level-bar.active.l1 { background: var(--green); }
+    .level-bar.active.l2 { background: var(--yellow); }
+    .level-bar.active.l3 { background: var(--red); }
+
+    /* ─── Blocks card ─────────────────────────────────────────── */
+    #card-blocks { grid-column: span 2; }
+    .blocks-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+      gap: 8px;
+      max-height: 220px;
+      overflow-y: auto;
+    }
+    .block-chip {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      padding: 8px 10px;
+      font-size: 12px;
+    }
+    .block-chip .block-name {
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-bottom: 4px;
+    }
+    .block-chip .block-rpm { color: var(--sub); font-size: 11px; }
+    .block-chip .block-level {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 1px 6px;
+      border-radius: 3px;
+      background: var(--muted);
+      color: var(--sub);
+      margin-top: 4px;
+    }
+    .block-chip .block-level.l0 { background: rgba(52,209,122,.15); color: var(--green); }
+    .block-chip .block-level.l1 { background: rgba(52,209,122,.15); color: var(--green); }
+    .block-chip .block-level.l2 { background: rgba(245,197,66,.12); color: var(--yellow); }
+    .block-chip .block-level.l3 { background: rgba(242,86,74,.13);  color: var(--red); }
+    .block-chip .block-level.suspended { background: rgba(242,86,74,.2); color: var(--red); }
+
+    /* ─── Learning card ───────────────────────────────────────── */
+    #card-learning { grid-column: span 2; }
+    .layer-row { margin-bottom: 10px; }
+    .layer-row:last-child { margin-bottom: 0; }
+    .layer-header { display: flex; justify-content: space-between; margin-bottom: 4px; }
+    .layer-name { font-size: 12px; color: var(--text); }
+    .layer-status { font-size: 11px; font-weight: 600; color: var(--sub); }
+    .layer-status.complete { color: var(--green); }
+    .layer-status.in_progress { color: var(--blue); }
+    .layer-track {
+      height: 4px;
+      background: var(--muted);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    .layer-fill {
+      height: 100%;
+      border-radius: 2px;
+      background: var(--muted);
+      transition: width .8s ease, background .4s;
+    }
+    .layer-fill.complete { background: var(--green); }
+    .layer-fill.in_progress { background: var(--blue); }
+
+    /* ─── Policies card ───────────────────────────────────────── */
+    #card-policies { grid-column: span 2; }
+    .policy-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .policy-table th {
+      text-align: left;
+      padding: 0 8px 6px;
+      color: var(--sub);
+      font-weight: 600;
+      font-size: 11px;
+      letter-spacing: .05em;
+      text-transform: uppercase;
+      border-bottom: 1px solid var(--border);
+    }
+    .policy-table td {
+      padding: 7px 8px;
+      border-bottom: 1px solid var(--border);
+      color: var(--text);
+    }
+    .policy-table tbody tr:last-child td { border-bottom: none; }
+    .policy-table .policy-action {
+      display: inline-block;
+      padding: 1px 7px;
+      border-radius: 3px;
+      font-size: 10px;
+      font-weight: 700;
+    }
+    .policy-action.serve_fully    { background: rgba(52,209,122,.15); color: var(--green); }
+    .policy-action.serve_limited  { background: rgba(79,142,247,.12); color: var(--blue); }
+    .policy-action.suspend        { background: rgba(242,86,74,.13);  color: var(--red); }
+    .policy-action.allow          { background: rgba(167,139,250,.12); color: var(--purple); }
+    .empty-state { color: var(--sub); font-size: 12px; padding: 12px 0; }
+
+    /* ─── Controls card ───────────────────────────────────────── */
+    #card-controls { grid-column: span 2; }
+    .btn-row { display: flex; flex-wrap: wrap; gap: 8px; }
+    .btn {
+      padding: 7px 16px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--text);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background .15s, border-color .15s;
+    }
+    .btn:hover { background: var(--muted); }
+    .btn.primary { background: var(--blue); border-color: var(--blue); color: #fff; }
+    .btn.primary:hover { background: #3a7de0; }
+    .btn.danger  { background: rgba(242,86,74,.12); border-color: var(--red); color: var(--red); }
+    .btn.danger:hover  { background: rgba(242,86,74,.22); }
+    .btn.warn    { background: rgba(245,197,66,.1); border-color: var(--yellow); color: var(--yellow); }
+    .btn.warn:hover    { background: rgba(245,197,66,.2); }
+
+    .preset-title { font-size: 11px; color: var(--sub); margin: 10px 0 6px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; }
+
+    /* ─── Scrollbar ───────────────────────────────────────────── */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--muted); border-radius: 3px; }
+
+    /* ─── Responsive ──────────────────────────────────────────── */
+    @media (max-width: 900px) {
+      main { grid-template-columns: repeat(2, 1fr); }
+      #card-status, #card-rpm, #card-level,
+      #card-chart, #card-blocks, #card-learning,
+      #card-policies, #card-controls { grid-column: span 2; }
+    }
+    @media (max-width: 560px) {
+      main { grid-template-columns: 1fr; }
+      #card-status, #card-rpm, #card-level,
+      #card-chart, #card-blocks, #card-learning,
+      #card-policies, #card-controls { grid-column: span 1; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">CHAKRA<span> Dashboard</span></div>
+  <div class="spacer"></div>
+  <div id="ws-dot"></div>
+  <span id="ws-label">disconnected</span>
+  &nbsp;&nbsp;
+  <span id="last-updated">–</span>
+</header>
+
+<main>
+
+  <!-- Status -->
+  <div class="card" id="card-status">
+    <div class="card-title">System Status</div>
+    <div id="status-badge" class="status-badge inactive">
+      <span class="status-dot"></span>
+      <span id="status-text">Inactive</span>
+    </div>
+    <div class="stat-row"><span class="stat-label">Mode</span><span class="stat-val" id="stat-mode">–</span></div>
+    <div class="stat-row"><span class="stat-label">Level</span><span class="stat-val" id="stat-level">–</span></div>
+    <div class="stat-row"><span class="stat-label">Phase</span><span class="stat-val" id="stat-phase">–</span></div>
+  </div>
+
+  <!-- RPM Gauge -->
+  <div class="card" id="card-rpm">
+    <div class="card-title">Global RPM</div>
+    <div class="rpm-big" id="rpm-value">0</div>
+    <div class="rpm-sub" id="rpm-sub">requests / minute</div>
+    <div class="rpm-bar-track"><div class="rpm-bar-fill" id="rpm-bar"></div></div>
+    <div class="rpm-thresholds">
+      <span id="thr-l1">L1 –</span>
+      <span id="thr-l2">L2 –</span>
+      <span id="thr-l3">L3 –</span>
+    </div>
+  </div>
+
+  <!-- RPM Chart -->
+  <div class="card" id="card-chart">
+    <div class="card-title">RPM History</div>
+    <canvas id="rpm-canvas"></canvas>
+  </div>
+
+  <!-- Level bars -->
+  <div class="card" id="card-level">
+    <div class="card-title">Activation Level</div>
+    <div class="level-display" id="level-bars"></div>
+    <div class="stat-row"><span class="stat-label">Activated</span><span class="stat-val" id="stat-activated">–</span></div>
+    <div class="stat-row"><span class="stat-label">Auto triggers</span><span class="stat-val" id="stat-triggers">–</span></div>
+  </div>
+
+  <!-- Blocks -->
+  <div class="card" id="card-blocks">
+    <div class="card-title">Blocks</div>
+    <div class="blocks-grid" id="blocks-grid"><p class="empty-state">No blocks registered.</p></div>
+  </div>
+
+  <!-- Learning -->
+  <div class="card" id="card-learning">
+    <div class="card-title">Shadow Mode Learning</div>
+    <div id="learning-layers"></div>
+  </div>
+
+  <!-- Policies -->
+  <div class="card" id="card-policies">
+    <div class="card-title">Active Policies</div>
+    <div id="policies-wrap"><p class="empty-state">No policies configured.</p></div>
+  </div>
+
+  <!-- Controls -->
+  <div class="card" id="card-controls">
+    <div class="card-title">Controls</div>
+    <div class="btn-row">
+      <button class="btn primary" onclick="doActivate()">Activate</button>
+      <button class="btn warn"    onclick="doActivate(1)">Level 1</button>
+      <button class="btn warn"    onclick="doActivate(2)">Level 2</button>
+      <button class="btn danger"  onclick="doActivate(3)">Level 3</button>
+      <button class="btn"         onclick="doDeactivate()">Deactivate</button>
+    </div>
+    <div class="preset-title">Emergency Presets</div>
+    <div class="btn-row">
+      <button class="btn danger" onclick="doPreset('suspend-non-essential')">Suspend Non-Essential</button>
+      <button class="btn danger" onclick="doPreset('checkout-only')">Checkout Only</button>
+      <button class="btn warn"   onclick="doPreset('cache-everything')">Cache Everything</button>
+      <button class="btn"        onclick="doPreset('restore-all')">Restore All</button>
+    </div>
+  </div>
+
+</main>
+
+<script>
+// ─── State ───────────────────────────────────────────────────────────────────
+const rpmHistory = [];       // { timestamp, rpm }[]
+let config = null;
+let ws = null;
+let wsRetryMs = 2000;
+
+// ─── Fetch helpers ────────────────────────────────────────────────────────────
+async function apiFetch(path, opts) {
+  const r = await fetch(path, opts);
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
+// ─── Refresh loop ─────────────────────────────────────────────────────────────
+async function refresh() {
+  try {
+    const [status, rpmData, blocksData, policiesData, learningData, cfgData] = await Promise.all([
+      apiFetch('/api/status'),
+      apiFetch('/api/rpm'),
+      apiFetch('/api/blocks'),
+      apiFetch('/api/policies'),
+      apiFetch('/api/learning'),
+      apiFetch('/api/config'),
+    ]);
+    config = cfgData;
+    renderStatus(status);
+    renderRPM(rpmData);
+    renderBlocks(blocksData);
+    renderPolicies(policiesData);
+    renderLearning(learningData);
+    document.getElementById('last-updated').textContent = 'Updated ' + new Date().toLocaleTimeString();
+  } catch (e) {
+    document.getElementById('last-updated').textContent = 'Fetch error';
+  }
+}
+
+// ─── Status ───────────────────────────────────────────────────────────────────
+function renderStatus(s) {
+  const badge = document.getElementById('status-badge');
+  const txt   = document.getElementById('status-text');
+  badge.className = 'status-badge ' + (s.active ? 'active' : s.sleeping ? 'sleeping' : 'inactive');
+  txt.textContent = s.active ? 'Active' : s.sleeping ? 'Sleeping' : 'Inactive';
+
+  document.getElementById('stat-mode').textContent  = s.mode  ?? '–';
+  document.getElementById('stat-level').textContent = s.active ? `Level ${s.level}` : '–';
+  document.getElementById('stat-phase').textContent = s.phase !== undefined ? `Phase ${s.phase}` : '–';
+
+  // Level bars
+  renderLevelBars(s.active ? (s.level ?? 0) : 0);
+
+  document.getElementById('stat-activated').textContent = s.activatedAt
+    ? new Date(s.activatedAt).toLocaleTimeString() : '–';
+  document.getElementById('stat-triggers').textContent = s.autoTriggerCount ?? '–';
+}
+
+function renderLevelBars(currentLevel) {
+  const container = document.getElementById('level-bars');
+  container.innerHTML = '';
+  const heights = [30, 55, 80, 110];
+  ['–', 'L1', 'L2', 'L3'].forEach((label, i) => {
+    const bar = document.createElement('div');
+    bar.className = 'level-bar' + (i > 0 && i <= currentLevel ? ` active l${i}` : '');
+    bar.style.height = heights[i] + 'px';
+    bar.title = label;
+    container.appendChild(bar);
+  });
+}
+
+// ─── RPM ──────────────────────────────────────────────────────────────────────
+function renderRPM(data) {
+  const current = data.current;
+  const rpm = Math.round(current.global ?? 0);
+
+  document.getElementById('rpm-value').textContent = rpm;
+
+  // Merge server history into local buffer
+  if (data.history && data.history.length) {
+    const newEntries = data.history.filter(
+      h => !rpmHistory.some(e => e.timestamp === h.timestamp)
+    );
+    rpmHistory.push(...newEntries);
+    rpmHistory.sort((a, b) => a.timestamp - b.timestamp);
+    // Keep last 360
+    if (rpmHistory.length > 360) rpmHistory.splice(0, rpmHistory.length - 360);
+  }
+
+  // Thresholds from config
+  const t1 = config?.activation?.level1_threshold ?? null;
+  const t2 = config?.activation?.level2_threshold ?? null;
+  const t3 = config?.activation?.level3_threshold ?? null;
+  const maxRpm = Math.max(rpm, t3 ?? t2 ?? t1 ?? 100, ...rpmHistory.map(h => h.rpm), 1);
+
+  // Bar
+  const bar = document.getElementById('rpm-bar');
+  const pct = Math.min(100, (rpm / maxRpm) * 100);
+  bar.style.width = pct + '%';
+  bar.className = 'rpm-bar-fill' + (t3 && rpm >= t3 ? ' crit' : t2 && rpm >= t2 ? ' warn' : '');
+
+  // Threshold labels
+  document.getElementById('thr-l1').textContent = t1 ? `L1 ${t1}` : '';
+  document.getElementById('thr-l2').textContent = t2 ? `L2 ${t2}` : '';
+  document.getElementById('thr-l3').textContent = t3 ? `L3 ${t3}` : '';
+
+  drawChart(maxRpm, t1, t2, t3);
+}
+
+// ─── Chart ────────────────────────────────────────────────────────────────────
+function drawChart(maxRpm, t1, t2, t3) {
+  const canvas = document.getElementById('rpm-canvas');
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  if (!rect.width) return;
+  canvas.width  = rect.width  * dpr;
+  canvas.height = 120 * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+
+  const W = rect.width, H = 120;
+  ctx.clearRect(0, 0, W, H);
+
+  if (!rpmHistory.length) return;
+
+  const pad = { t: 8, b: 18, l: 40, r: 12 };
+  const cw = W - pad.l - pad.r;
+  const ch = H - pad.t - pad.b;
+
+  // Threshold lines
+  const drawThr = (val, color) => {
+    if (!val) return;
+    const y = pad.t + ch - (val / maxRpm) * ch;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l + cw, y); ctx.stroke();
+    ctx.setLineDash([]);
+  };
+  drawThr(t1, 'rgba(52,209,122,.4)');
+  drawThr(t2, 'rgba(245,197,66,.4)');
+  drawThr(t3, 'rgba(242,86,74,.4)');
+
+  // Y axis
+  ctx.fillStyle = '#7a8299';
+  ctx.font = '10px Inter, system-ui, sans-serif';
+  ctx.textAlign = 'right';
+  [0, Math.round(maxRpm / 2), maxRpm].forEach(v => {
+    const y = pad.t + ch - (v / maxRpm) * ch;
+    ctx.fillText(v, pad.l - 5, y + 3);
+    ctx.strokeStyle = '#1f2535'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l + cw, y); ctx.stroke();
+  });
+
+  // Line
+  const pts = rpmHistory.slice(-120);
+  if (pts.length < 2) return;
+
+  const xOf = i => pad.l + (i / (pts.length - 1)) * cw;
+  const yOf = v => pad.t + ch - Math.min(1, v / maxRpm) * ch;
+
+  // Gradient fill
+  const grad = ctx.createLinearGradient(0, pad.t, 0, pad.t + ch);
+  grad.addColorStop(0,   'rgba(79,142,247,.35)');
+  grad.addColorStop(1,   'rgba(79,142,247,.02)');
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.moveTo(xOf(0), yOf(pts[0].rpm));
+  pts.forEach((p, i) => ctx.lineTo(xOf(i), yOf(p.rpm)));
+  ctx.lineTo(xOf(pts.length - 1), pad.t + ch);
+  ctx.lineTo(xOf(0), pad.t + ch);
+  ctx.closePath();
+  ctx.fill();
+
+  // Line itself
+  ctx.strokeStyle = '#4f8ef7';
+  ctx.lineWidth = 1.5;
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+  pts.forEach((p, i) => i === 0 ? ctx.moveTo(xOf(0), yOf(p.rpm)) : ctx.lineTo(xOf(i), yOf(p.rpm)));
+  ctx.stroke();
+
+  // X axis labels
+  ctx.fillStyle = '#7a8299';
+  ctx.textAlign = 'center';
+  ctx.font = '10px Inter, system-ui, sans-serif';
+  const first = pts[0].timestamp, last = pts[pts.length - 1].timestamp;
+  [[0, first], [pts.length - 1, last]].forEach(([i, ts]) => {
+    const d = new Date(ts);
+    ctx.fillText(`${d.getHours()}:${String(d.getMinutes()).padStart(2,'0')}`, xOf(i), H - 4);
+  });
+}
+
+// ─── Blocks ───────────────────────────────────────────────────────────────────
+function renderBlocks(data) {
+  const grid = document.getElementById('blocks-grid');
+  const blocks = data.blocks ?? [];
+  if (!blocks.length) { grid.innerHTML = '<p class="empty-state">No blocks registered.</p>'; return; }
+
+  grid.innerHTML = blocks.map(b => {
+    const lvl = b.suspended ? 'suspended' : `l${b.minLevel ?? 0}`;
+    const bRpm = data.perBlockRpm?.[b.name] ?? 0;
+    return `<div class="block-chip">
+      <div class="block-name" title="${b.name}">${b.name}</div>
+      <div class="block-rpm">${Math.round(bRpm)} rpm</div>
+      <span class="block-level ${lvl}">${b.suspended ? 'SUSPENDED' : `Min L${b.minLevel ?? 0}`}</span>
+    </div>`;
+  }).join('');
+}
+
+// ─── Policies ─────────────────────────────────────────────────────────────────
+function renderPolicies(data) {
+  const wrap = document.getElementById('policies-wrap');
+  const rules = data.active ?? [];
+  if (!rules.length) { wrap.innerHTML = '<p class="empty-state">No policies configured.</p>'; return; }
+
+  wrap.innerHTML = `<table class="policy-table">
+    <thead><tr><th>Name</th><th>Priority</th><th>Action</th></tr></thead>
+    <tbody>${rules.map(r => `
+      <tr>
+        <td>${r.name}</td>
+        <td>${r.priority ?? '–'}</td>
+        <td><span class="policy-action ${r.then?.action ?? ''}">${r.then?.action ?? '–'}</span></td>
+      </tr>`).join('')}
+    </tbody>
+  </table>`;
+}
+
+// ─── Learning ─────────────────────────────────────────────────────────────────
+function renderLearning(data) {
+  const container = document.getElementById('learning-layers');
+  const layers = [
+    { name: 'App Structure',     st: data.layers?.appStructure?.complete     ? 'complete' : 'waiting', pct: data.layers?.appStructure?.complete ? 100 : 0 },
+    { name: 'Traffic Patterns',  st: data.layers?.trafficPatterns?.complete  ? 'complete' : 'waiting', pct: data.layers?.trafficPatterns?.daysOfData ? Math.min(100, (data.layers.trafficPatterns.daysOfData / 7) * 100) : 0 },
+    { name: 'User Behaviour',    st: data.layers?.userBehaviour?.complete    ? 'complete' : 'in_progress', pct: data.layers?.userBehaviour?.progressPercent ?? 0 },
+    { name: 'Failure Signatures',st: data.layers?.failureSignatures?.complete ? 'complete' : 'waiting', pct: data.layers?.failureSignatures?.complete ? 100 : 0 },
+  ];
+
+  container.innerHTML = layers.map(l => `
+    <div class="layer-row">
+      <div class="layer-header">
+        <span class="layer-name">${l.name}</span>
+        <span class="layer-status ${l.st}">${l.st === 'complete' ? 'Complete' : l.st === 'in_progress' ? 'In Progress' : 'Waiting'}</span>
+      </div>
+      <div class="layer-track"><div class="layer-fill ${l.st}" style="width:${l.pct}%"></div></div>
+    </div>`).join('');
+}
+
+// ─── Controls ─────────────────────────────────────────────────────────────────
+async function doActivate(level) {
+  await apiFetch('/api/activate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(level !== undefined ? { level, initiatedBy: 'dashboard' } : { initiatedBy: 'dashboard' }),
+  }).catch(() => {});
+  refresh();
+}
+
+async function doDeactivate() {
+  await apiFetch('/api/deactivate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sequence: 'gradual', initiatedBy: 'dashboard' }),
+  }).catch(() => {});
+  refresh();
+}
+
+async function doPreset(name) {
+  await apiFetch(`/api/presets/${name}`, { method: 'POST' }).catch(() => {});
+  refresh();
+}
+
+// ─── WebSocket ────────────────────────────────────────────────────────────────
+function connectWS() {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  ws = new WebSocket(`${proto}://${location.host}/ws`);
+
+  ws.onopen = () => {
+    wsRetryMs = 2000;
+    document.getElementById('ws-dot').className = 'live';
+    document.getElementById('ws-label').textContent = 'live';
+  };
+
+  ws.onmessage = (e) => {
+    try {
+      const msg = JSON.parse(e.data);
+      if (msg.type === 'rpm_update') {
+        rpmHistory.push({ timestamp: msg.data.updatedAt, rpm: msg.data.global ?? 0 });
+        if (rpmHistory.length > 360) rpmHistory.shift();
+        document.getElementById('rpm-value').textContent = Math.round(msg.data.global ?? 0);
+        const t3 = config?.activation?.level3_threshold ?? null;
+        const maxRpm = Math.max(msg.data.global ?? 0, ...rpmHistory.map(h => h.rpm), 1);
+        drawChart(maxRpm, config?.activation?.level1_threshold ?? null, config?.activation?.level2_threshold ?? null, t3);
+      } else if (msg.type === 'activation_change') {
+        renderStatus(msg.data);
+      }
+    } catch {}
+  };
+
+  ws.onclose = () => {
+    document.getElementById('ws-dot').className = '';
+    document.getElementById('ws-label').textContent = 'reconnecting…';
+    setTimeout(connectWS, wsRetryMs);
+    wsRetryMs = Math.min(wsRetryMs * 1.5, 30000);
+  };
+}
+
+// ─── Init ─────────────────────────────────────────────────────────────────────
+refresh();
+setInterval(refresh, 5000);
+connectWS();
+
+// Redraw chart on resize
+window.addEventListener('resize', () => {
+  if (rpmHistory.length) {
+    const t1 = config?.activation?.level1_threshold ?? null;
+    const t2 = config?.activation?.level2_threshold ?? null;
+    const t3 = config?.activation?.level3_threshold ?? null;
+    const maxRpm = Math.max(...rpmHistory.map(h => h.rpm), 1);
+    drawChart(maxRpm, t1, t2, t3);
+  }
+});
+</script>
+</body>
+</html>
