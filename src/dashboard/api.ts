@@ -12,6 +12,7 @@ import type { ChakraStatus } from '../index';
 import type { ChakraConfig } from '../config/loader';
 import type { PolicyRule } from '../core/policy-engine';
 import type { ActivationLogEntry } from '../core/activation';
+import type { ShadowModeSuggester } from '../background/shadow-mode/suggester';
 
 // ─── Public types ─────────────────────────────────────────────────────────────
 
@@ -27,6 +28,8 @@ export interface DashboardAPIConfig {
   activate: (level?: number, initiatedBy?: string) => void;
   initiateSleep: (sequence?: 'gradual' | 'immediate', initiatedBy?: string) => void;
   updateConfig: (patch: Partial<ChakraConfig>) => void;
+  /** Optional Shadow Mode suggester — enables real learning data in dashboard */
+  shadowSuggester?: ShadowModeSuggester;
   /** Max RPM history entries to retain (default: 360 = 30 minutes at 5-second intervals) */
   maxHistoryEntries?: number;
   /** Max incident reports to retain in memory (default: 100) */
