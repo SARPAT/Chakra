@@ -1,0 +1,7 @@
+mode: auto
+version: "1"
+activate_when:
+  rpm_threshold: 30
+dashboard:
+  enabled: true
+  port: 4242
