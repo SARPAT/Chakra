@@ -176,8 +176,8 @@ export class ChakraInstance {
       endpointCount: countRegisteredEndpoints(this.ringMapper),
       blockCount: countRegisteredBlocks(this.ringMapper),
       mode: config.mode,
-      shadowModeAvailable: false,    // CP1 — not yet built
-      sessionCacheAvailable: false,  // CP1 — not yet built
+      shadowModeAvailable: !this.disabled && this.shadowObserver.isActive(),
+      sessionCacheAvailable: !this.disabled,
       dashboardAvailable: !this.disabled,
       dashboardPort: config.dashboard?.port ?? DEFAULT_DASHBOARD_PORT,
       disabled: this.disabled,
