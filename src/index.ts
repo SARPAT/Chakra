@@ -111,11 +111,15 @@ export class ChakraInstance {
     // ── Step 4: RPM Engine ───────────────────────────────────────────────────
     this.rpmEngine = new RPMEngine();
 
-    // ── Step 5: Activation Controller ───────────────────────────────────────
+    // ── Step 5: Container Bridge ─────────────────────────────────────────────
+    this.adapterManager = this.buildAdapterManager(config);
+
+    // ── Step 6: Activation Controller ───────────────────────────────────────
     this.activationController = new ActivationController({
       dispatcher: this.dispatcher,
       rpmEngine: this.rpmEngine,
       chakraConfig: config,
+      adapterManager: this.adapterManager,
     });
 
     // ── Step 6: Dashboard ────────────────────────────────────────────────────
