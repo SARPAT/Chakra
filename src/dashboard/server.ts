@@ -21,6 +21,8 @@ export interface DashboardServerConfig {
   port?: number;
   /** Optional basic auth credentials. Omit to disable auth (dev environments). */
   auth?: { username: string; password: string };
+  /** Optional webhook adapter — enables POST /api/infrastructure-signal endpoint */
+  webhookAdapter?: WebhookAdapter;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
