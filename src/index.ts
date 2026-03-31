@@ -368,6 +368,66 @@ export class ChakraInstance {
     this.policyEngine.updateRules(rules);
   }
 
+  /**
+   * Build an AdapterManager from the infrastructure config.
+   * Always includes a WebhookAdapter. Optionally adds a primary adapter
+   * (kubernetes / ecs / prometheus) based on config.infrastructure.type.
+   * Silently catches adapter construction errors — CHAKRA never crashes.
+   */
+  private buildAdapterManager(config: ChakraConfig): AdapterManager {
+    const webhookAdapter = new WebhookAdapter();
+    const infraConfig = config.infrastructure;
+
+    if (!infraConfig?.type || infraConfig.type === 'webhook') {
+      return new AdapterManager(webhookAdapter);
+    }
+
+    try {
+      if (infraConfig.type === 'kubernetes') {
+        const k8sAdapter = new KubernetesAdapter({
+          namespace: infraConfig.namespace ?? 'default',
+          deploymentNames: infraConfig.deployment_names,
+          authMode: infraConfig.auth ?? 'in-cluster',
+          kubeconfigPath: infraConfig.kubeconfig_path,
+          hostEnv: infraConfig.host_env,
+          tokenEnv: infraConfig.token_env,
+        });
+        return new AdapterManager(webhookAdapter, k8sAdapter);
+      }
+
+      if (infraConfig.type === 'prometheus') {
+        if (!infraConfig.endpoint) {
+          throw new Error('prometheus adapter requires infrastructure.endpoint');
+        }
+        const promAdapter = new PrometheusAdapter({
+          endpoint: infraConfig.endpoint,
+          bearerTokenEnv: infraConfig.bearer_token_env,
+          metrics: infraConfig.metrics as Record<string, string> | undefined,
+        });
+        return new AdapterManager(webhookAdapter, promAdapter);
+      }
+
+      if (infraConfig.type === 'ecs') {
+        if (!infraConfig.region || !infraConfig.cluster || !infraConfig.service_names) {
+          throw new Error('ecs adapter requires infrastructure.region, cluster, and service_names');
+        }
+        const ecsAdapter = new ECSAdapter({
+          region: infraConfig.region,
+          cluster: infraConfig.cluster,
+          serviceNames: infraConfig.service_names,
+        });
+        return new AdapterManager(webhookAdapter, ecsAdapter);
+      }
+    } catch (err) {
+      logger.warn(
+        `Container Bridge adapter (${infraConfig.type}) failed to initialise: ` +
+        `${err instanceof Error ? err.message : String(err)}. Falling back to webhook-only.`,
+      );
+    }
+
+    return new AdapterManager(webhookAdapter);
+  }
+
   /** Push RPM state to Policy Engine and Dashboard every tick. */
   private startRPMSyncInterval(): void {
     const intervalMs = (this.config.rpm_engine?.update_interval_seconds ?? DEFAULT_RPM_INTERVAL_SECONDS) * 1000;
