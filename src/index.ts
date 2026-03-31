@@ -116,7 +116,17 @@ export class ChakraInstance {
       sessionProvider: undefined,  // Session Cache not yet built (CP1)
     });
 
-    // ── Step 4: RPM Engine ───────────────────────────────────────────────────
+    // ── Step 4: Session Cache + Shadow Mode ──────────────────────────────────
+    this.sessionCache = new SessionCache();
+
+    this.shadowObserver = new ShadowModeObserver({
+      sessionCache: this.sessionCache,
+    });
+
+    this.shadowAnalyser = new ShadowModeAnalyser(this.shadowObserver);
+    this.shadowSuggester = new ShadowModeSuggester(this.shadowAnalyser);
+
+    // ── Step 5: RPM Engine ───────────────────────────────────────────────────
     this.rpmEngine = new RPMEngine();
 
     // ── Step 5: Container Bridge ─────────────────────────────────────────────
