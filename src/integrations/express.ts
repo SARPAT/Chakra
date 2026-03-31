@@ -4,6 +4,7 @@
 import type { Request, Response, NextFunction, RequestHandler } from 'express';
 import type { Dispatcher } from '../core/dispatcher';
 import type RPMEngine from '../background/rpm-engine';
+import type { ShadowModeObserver } from '../background/shadow-mode/observer';
 
 // ─── Session ID extraction ────────────────────────────────────────────────────
 
