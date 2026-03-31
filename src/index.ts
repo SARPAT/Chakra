@@ -113,7 +113,7 @@ export class ChakraInstance {
       weightOverrideLow: config.weight_engine?.serve_limited_threshold ?? DEFAULT_WEIGHT_LOW,
       weightProvider: this.weightEngine,
       policyProvider: this.policyEngine,
-      sessionProvider: undefined,  // Session Cache not yet built (CP1)
+      sessionProvider: (hashedId) => this.sessionCache.get(hashedId),
     });
 
     // ── Step 4: Session Cache + Shadow Mode ──────────────────────────────────
