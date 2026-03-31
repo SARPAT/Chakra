@@ -87,6 +87,27 @@ export interface ChakraConfig {
       error_rate_delta?: number;
     };
   };
+
+  infrastructure?: {
+    type?: 'kubernetes' | 'ecs' | 'prometheus' | 'webhook';
+    /** Max seconds to hold activation while infrastructure scaling is in progress (0 = disabled) */
+    hold_for_scaling_max_seconds?: number;
+    // Kubernetes-specific
+    namespace?: string;
+    deployment_names?: string[];
+    auth?: 'in-cluster' | 'kubeconfig' | 'token';
+    kubeconfig_path?: string;
+    host_env?: string;
+    token_env?: string;
+    // ECS-specific
+    region?: string;
+    cluster?: string;
+    service_names?: string[];
+    // Prometheus-specific
+    endpoint?: string;
+    bearer_token_env?: string;
+    metrics?: Record<string, string>;
+  };
 }
 
 // ─── Loader ───────────────────────────────────────────────────────────────────
