@@ -163,6 +163,7 @@ export class ChakraInstance {
     });
 
     if (!this.disabled) {
+      this.shadowAnalyser.start();
       this.rpmEngine.start();
       this.activationController.start();
       this.startRPMSyncInterval();
