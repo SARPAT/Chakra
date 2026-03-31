@@ -330,6 +330,9 @@ export class ChakraInstance {
 
   /** Gracefully shut down all background services. */
   shutdown(): void {
+    this.shadowAnalyser.stop();
+    this.shadowObserver.stop();
+    this.sessionCache.stop();
     this.activationController.stop();
     if (this.syncInterval !== null) {
       clearInterval(this.syncInterval);
