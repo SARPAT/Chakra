@@ -154,6 +154,7 @@ export class ChakraInstance {
       initiateSleep: (sequence, initiatedBy) =>
         this.activationController.initiateSleep(sequence, initiatedBy),
       updateConfig: (patch) => this.updateConfig(patch),
+      shadowSuggester: this.shadowSuggester,
     });
 
     this.dashboardServer = new DashboardServer({
