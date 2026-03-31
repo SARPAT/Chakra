@@ -75,10 +75,15 @@ export class ActivationController {
   // Audit log
   private readonly log: ActivationLogEntry[] = [];
 
+  // Container Bridge
+  private readonly adapterManager: AdapterManager | null;
+
   // Auto mode state
   private thresholdExceededSince: number | null = null;
   private thresholdBelowSince: number | null = null;
   private autoPollInterval: ReturnType<typeof setInterval> | null = null;
+  /** Timestamp when CHAKRA began holding activation for infrastructure scaling */
+  private holdingSince: number | null = null;
 
   // Gradual restore state
   private restorationInterval: ReturnType<typeof setInterval> | null = null;
@@ -100,6 +105,7 @@ export class ActivationController {
 
     this.restoreStepIntervalMs = config.restoreStepIntervalMs ?? configuredRestoreMs;
     this.autoPollIntervalMs = config.autoPollIntervalMs ?? AUTO_POLL_INTERVAL_MS;
+    this.adapterManager = config.adapterManager ?? null;
   }
 
   // ─── Lifecycle ─────────────────────────────────────────────────────────────
