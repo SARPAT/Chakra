@@ -11,6 +11,7 @@ import type { Request, Response, NextFunction } from 'express';
 import { WebSocketServer, WebSocket } from 'ws';
 import type { RPMState } from '../types';
 import type { DashboardAPI } from './api';
+import type { WebhookAdapter } from '../integrations/container-bridge/webhook';
 import { logger } from '../utils/logger';
 
 // ─── Public types ─────────────────────────────────────────────────────────────
