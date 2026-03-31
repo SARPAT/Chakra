@@ -336,16 +336,46 @@ export class ActivationController {
         if (this.thresholdExceededSince === null) {
           this.thresholdExceededSince = now;
         } else if (now - this.thresholdExceededSince >= sustainedMs) {
-          this.activate(1);
-          // Override the log entry kind — already appended by activate()
-          // Patch the last entry with auto trigger info
-          this.patchLastLogTrigger(
-            `RPM exceeded threshold ${threshold} for ${Math.round((now - this.thresholdExceededSince) / 1000)}s`,
-          );
-          this.thresholdExceededSince = null;
+          // RPM threshold sustained — check Container Bridge before activating
+          if (this.adapterManager !== null) {
+            // Async hold evaluation — fire and forget with try/catch
+            const exceededSince = this.thresholdExceededSince;
+            this.adapterManager.evaluateHold(this.chakraConfig, this.holdingSince)
+              .then(decision => {
+                if (decision.hold) {
+                  if (this.holdingSince === null) {
+                    this.holdingSince = Date.now();
+                  }
+                  // Log hold only once per hold period (when holdingSince is newly set)
+                } else {
+                  this.holdingSince = null;
+                  this.activate(1);
+                  this.patchLastLogTrigger(
+                    `RPM exceeded threshold ${threshold} for ${Math.round((Date.now() - exceededSince) / 1000)}s. ${decision.reason}`,
+                  );
+                  this.thresholdExceededSince = null;
+                }
+              })
+              .catch(() => {
+                // Adapter error — activate on RPM as fallback
+                this.holdingSince = null;
+                this.activate(1);
+                this.patchLastLogTrigger(
+                  `RPM exceeded threshold ${threshold} — infrastructure check failed, activating`,
+                );
+                this.thresholdExceededSince = null;
+              });
+          } else {
+            this.activate(1);
+            this.patchLastLogTrigger(
+              `RPM exceeded threshold ${threshold} for ${Math.round((now - this.thresholdExceededSince) / 1000)}s`,
+            );
+            this.thresholdExceededSince = null;
+          }
         }
       } else {
         this.thresholdExceededSince = null;
+        this.holdingSince = null;  // RPM dropped — cancel any hold
       }
 
     } else if (isActive && !isRestoring) {
