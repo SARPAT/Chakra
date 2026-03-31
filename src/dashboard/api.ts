@@ -217,20 +217,72 @@ export class DashboardAPI {
     this.config.onPoliciesUpdated(this.policies);
   }
 
-  // ─── Learning (Shadow Mode stub) ─────────────────────────────────────────────
+  // ─── Learning (Shadow Mode) ───────────────────────────────────────────────────
 
   learning(): LearningResponse {
-    // Shadow Mode not yet built — return placeholder showing no learning data
-    return {
-      daysSinceInstall: 0,
-      layers: {
-        appStructure: { complete: false, endpointCount: 0 },
-        trafficPatterns: { complete: false, daysOfData: 0 },
-        userBehaviour: { complete: false, progressPercent: 0, conversionsObserved: 0 },
-        failureSignatures: { complete: false, awaitingStressEvent: true },
-      },
-      suggestions: { ringMap: false, rpmThresholds: false },
-    };
+    const suggester = this.config.shadowSuggester;
+    if (!suggester) {
+      return {
+        daysSinceInstall: 0,
+        layers: {
+          appStructure: { complete: false, endpointCount: 0 },
+          trafficPatterns: { complete: false, daysOfData: 0 },
+          userBehaviour: { complete: false, progressPercent: 0, conversionsObserved: 0 },
+          failureSignatures: { complete: false, awaitingStressEvent: true },
+        },
+        suggestions: { ringMap: false, rpmThresholds: false },
+      };
+    }
+
+    try {
+      const suggestions = suggester.getSuggestions();
+      const ringMap = suggestions.ringMap;
+      const rpm = suggestions.rpmThresholds;
+      const progress = suggester['analyser'].getLearningProgress();
+
+      const conversionsPct = Math.min(
+        100,
+        Math.round((progress.conversionJourneysObserved / 50) * 100),
+      );
+
+      return {
+        daysSinceInstall: progress.daysObserved,
+        layers: {
+          appStructure: {
+            complete: progress.layer1AppStructure === 'complete',
+            endpointCount: progress.totalObservations > 0 ? ringMap.blocks.reduce((s, b) => s + b.endpoints.length, 0) : 0,
+          },
+          trafficPatterns: {
+            complete: progress.layer2TrafficPatterns === 'complete',
+            daysOfData: progress.daysObserved,
+          },
+          userBehaviour: {
+            complete: progress.layer3UserBehaviour === 'complete',
+            progressPercent: conversionsPct,
+            conversionsObserved: progress.conversionJourneysObserved,
+          },
+          failureSignatures: {
+            complete: progress.layer4FailureSignatures === 'complete',
+            awaitingStressEvent: !progress.stressEventObserved,
+          },
+        },
+        suggestions: {
+          ringMap: ringMap.ready,
+          rpmThresholds: rpm.ready,
+        },
+      };
+    } catch {
+      return {
+        daysSinceInstall: 0,
+        layers: {
+          appStructure: { complete: false, endpointCount: 0 },
+          trafficPatterns: { complete: false, daysOfData: 0 },
+          userBehaviour: { complete: false, progressPercent: 0, conversionsObserved: 0 },
+          failureSignatures: { complete: false, awaitingStressEvent: true },
+        },
+        suggestions: { ringMap: false, rpmThresholds: false },
+      };
+    }
   }
 
   // ─── Activation controls ──────────────────────────────────────────────────────
