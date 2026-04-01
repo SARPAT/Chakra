@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="https://img.icons8.com/external-flaticons-flat-flat-icons/128/external-chakra-yoga-flaticons-flat-flat-icons.png" alt="CHAKRA Logo" width="120" />
+<img src="assets/chakra-logo.png" alt="CHAKRA Logo" width="160" />
 
 # CHAKRA Middleware
 
