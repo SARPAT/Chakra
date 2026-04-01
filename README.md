@@ -1,8 +1,27 @@
+<div align="center">
+
+<img src="https://img.icons8.com/external-flaticons-flat-flat-icons/128/external-chakra-yoga-flaticons-flat-flat-icons.png" alt="CHAKRA Logo" width="120" />
+
 # CHAKRA Middleware
 
-Intelligent graceful degradation middleware for Node.js applications. CHAKRA sits in front of your Express app and manages traffic surges by routing requests to reduced-functionality versions of your application based on real-time system stress and request priority.
+**Intelligent graceful degradation for Node.js applications**
+
+[![Node.js](https://img.shields.io/badge/Node.js-%3E%3D18-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.4-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Express](https://img.shields.io/badge/Express-4.x-000000?logo=express&logoColor=white)](https://expressjs.com/)
+[![License](https://img.shields.io/badge/License-Apache--2.0-D22128?logo=apache&logoColor=white)](LICENSE)
+[![Tests](https://img.shields.io/badge/Tests-583%20passing-brightgreen?logo=vitest&logoColor=white)](#commands)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+
+---
+
+CHAKRA sits in front of your Express app and manages traffic surges by routing requests to reduced-functionality versions of your application based on real-time system stress and request priority.
 
 When your infrastructure is scaling up but not yet ready, CHAKRA bridges the gap — keeping critical requests (payments, checkouts) fully functional while gracefully degrading less important endpoints.
+
+[Quick Start](#quick-start) | [Core Concepts](#core-concepts) | [Dashboard](#dashboard) | [Architecture](#architecture) | [License](#license)
+
+</div>
 
 ## How It Works
 
