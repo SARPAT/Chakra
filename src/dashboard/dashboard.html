@@ -3,412 +3,670 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CHAKRA Dashboard</title>
+  <title>CHAKRA // TERMINAL</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --bg:       #0d0f14;
-      --surface:  #151820;
-      --border:   #1f2535;
-      --muted:    #3a4055;
-      --text:     #e2e8f0;
-      --sub:      #7a8299;
-      --blue:     #4f8ef7;
-      --green:    #34d17a;
-      --yellow:   #f5c542;
-      --red:      #f2564a;
-      --purple:   #a78bfa;
-      --radius:   10px;
-      --shadow:   0 2px 12px rgba(0,0,0,.45);
+      --bg:        #000000;
+      --surface:   #0a0a0a;
+      --surface-2: #111111;
+      --border:    #1a1a1a;
+      --text:      #ff6600;
+      --text-2:    #cc5200;
+      --sub:       #664400;
+      --label:     #ffffff;
+      --green:     #00ff41;
+      --yellow:    #ffff00;
+      --red:       #ff0000;
+      --cyan:      #00ffff;
+      --font:      'JetBrains Mono', 'Courier New', monospace;
     }
 
     body {
       background: var(--bg);
       color: var(--text);
-      font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
-      font-size: 14px;
-      line-height: 1.5;
-      min-height: 100vh;
+      font-family: var(--font);
+      font-size: 13px;
+      line-height: 1.4;
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
     }
 
-    /* ─── Top bar ─────────────────────────────────────────────── */
-    header {
+    /* ─── Sidebar ─────────────────────────────────────────────────────────────── */
+    #sidebar {
+      width: 200px;
+      min-width: 200px;
+      height: 100vh;
+      background: var(--bg);
+      border-right: 1px solid var(--text);
+      display: flex;
+      flex-direction: column;
+    }
+
+    #sidebar-header {
+      padding: 16px 12px 12px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    #sidebar-logo {
+      color: var(--label);
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      display: block;
+    }
+
+    #sidebar-version {
+      color: var(--sub);
+      font-size: 10px;
+      margin-top: 3px;
+      letter-spacing: 0.06em;
+    }
+
+    #sidebar-nav {
+      flex: 1;
+      padding: 6px 0;
+    }
+
+    .nav-item {
+      display: block;
+      width: 100%;
+      padding: 9px 12px;
+      background: none;
+      border: none;
+      border-left: 2px solid transparent;
+      color: var(--text-2);
+      font-family: var(--font);
+      font-size: 11px;
+      text-align: left;
+      cursor: pointer;
+      letter-spacing: 0.06em;
+      white-space: nowrap;
+    }
+
+    .nav-item:hover {
+      background: rgba(255,102,0,0.07);
+      color: var(--text);
+    }
+
+    .nav-item.active {
+      background: rgba(255,102,0,0.12);
+      color: var(--label);
+      border-left-color: var(--text);
+    }
+
+    #sidebar-footer {
+      padding: 10px 12px;
+      border-top: 1px solid var(--border);
+    }
+
+    #ws-status {
       display: flex;
       align-items: center;
-      gap: 14px;
-      padding: 14px 24px;
-      background: var(--surface);
+      gap: 6px;
+    }
+
+    #ws-dot { font-size: 9px; color: var(--sub); }
+    #ws-dot.live { color: var(--green); }
+    #ws-label { color: var(--sub); font-size: 10px; letter-spacing: 0.08em; }
+    #ws-label.live { color: var(--green); }
+    #last-updated { color: var(--sub); font-size: 10px; margin-top: 4px; }
+
+    /* ─── Main area ───────────────────────────────────────────────────────────── */
+    #main {
+      flex: 1;
+      height: 100vh;
+      overflow-y: auto;
+      background: var(--bg);
+    }
+
+    /* ─── Top bar ─────────────────────────────────────────────────────────────── */
+    #topbar {
+      padding: 7px 14px;
       border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--surface);
       position: sticky;
       top: 0;
       z-index: 10;
     }
-    header .logo {
-      font-weight: 700;
-      font-size: 17px;
-      letter-spacing: .04em;
-      color: var(--blue);
-    }
-    header .logo span { color: var(--text); }
-    header .spacer { flex: 1; }
-    #ws-dot {
-      width: 8px; height: 8px; border-radius: 50%;
-      background: var(--muted);
-      transition: background .4s;
-    }
-    #ws-dot.live { background: var(--green); box-shadow: 0 0 6px var(--green); }
-    #ws-label { color: var(--sub); font-size: 12px; }
-    #last-updated { color: var(--sub); font-size: 12px; }
 
-    /* ─── Layout ──────────────────────────────────────────────── */
-    main {
-      max-width: 1280px;
-      margin: 0 auto;
-      padding: 24px;
+    #topbar-title    { color: var(--label); font-size: 11px; font-weight: 700; letter-spacing: 0.12em; }
+    #topbar-sep      { color: var(--sub); }
+    #topbar-subtitle { color: var(--text-2); font-size: 11px; }
+    #topbar-time     { color: var(--sub); font-size: 10px; margin-left: auto; }
+
+    /* ─── Screens ─────────────────────────────────────────────────────────────── */
+    .screen { display: none; }
+    .screen.active { display: block; }
+
+    /* ─── KPI bar ─────────────────────────────────────────────────────────────── */
+    #kpi-bar {
       display: grid;
       grid-template-columns: repeat(4, 1fr);
-      gap: 16px;
+      border-bottom: 1px solid var(--border);
     }
 
-    /* ─── Card ────────────────────────────────────────────────── */
-    .card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 18px 20px;
-      box-shadow: var(--shadow);
+    .kpi-tile {
+      padding: 14px 16px;
+      border-right: 1px solid var(--border);
     }
-    .card-title {
-      font-size: 11px;
-      font-weight: 600;
-      letter-spacing: .08em;
+    .kpi-tile:last-child { border-right: none; }
+
+    .kpi-label {
+      color: var(--sub);
+      font-size: 10px;
+      letter-spacing: 0.12em;
       text-transform: uppercase;
-      color: var(--sub);
-      margin-bottom: 10px;
+      margin-bottom: 5px;
     }
 
-    /* ─── Status card ─────────────────────────────────────────── */
-    #card-status { grid-column: span 1; }
-    .status-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 7px;
-      padding: 5px 12px;
-      border-radius: 20px;
-      font-size: 13px;
-      font-weight: 600;
-      background: var(--muted);
-      color: var(--sub);
-      margin-bottom: 12px;
-    }
-    .status-badge.active   { background: rgba(52,209,122,.15); color: var(--green); }
-    .status-badge.inactive { background: rgba(79,142,247,.12); color: var(--blue); }
-    .status-badge.sleeping { background: rgba(245,197,66,.12); color: var(--yellow); }
-    .status-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
-
-    .stat-row { display: flex; justify-content: space-between; margin-top: 6px; }
-    .stat-label { color: var(--sub); }
-    .stat-val { font-weight: 600; }
-
-    /* ─── RPM gauge card ──────────────────────────────────────── */
-    #card-rpm { grid-column: span 1; }
-    .rpm-big {
-      font-size: 48px;
+    .kpi-value {
+      color: var(--label);
+      font-size: 30px;
       font-weight: 700;
       line-height: 1;
-      letter-spacing: -.02em;
-      margin-bottom: 4px;
+      margin-bottom: 5px;
+      font-variant-numeric: tabular-nums;
     }
-    .rpm-sub { color: var(--sub); font-size: 12px; margin-bottom: 14px; }
-    .rpm-bar-track {
-      height: 6px;
-      background: var(--muted);
-      border-radius: 3px;
-      overflow: hidden;
-      margin-bottom: 4px;
-    }
-    .rpm-bar-fill {
-      height: 100%;
-      background: var(--blue);
-      border-radius: 3px;
-      transition: width .6s ease, background .4s;
-      width: 0%;
-    }
-    .rpm-bar-fill.warn  { background: var(--yellow); }
-    .rpm-bar-fill.crit  { background: var(--red); }
-    .rpm-thresholds { display: flex; justify-content: space-between; color: var(--sub); font-size: 11px; }
 
-    /* ─── RPM chart card ──────────────────────────────────────── */
-    #card-chart { grid-column: span 2; }
-    #rpm-canvas { width: 100%; height: 120px; display: block; }
-
-    /* ─── Level card ──────────────────────────────────────────── */
-    #card-level { grid-column: span 1; }
-    .level-display {
-      display: flex;
-      align-items: flex-end;
-      gap: 5px;
-      margin-bottom: 12px;
-    }
-    .level-bar {
-      flex: 1;
-      border-radius: 4px 4px 0 0;
-      background: var(--muted);
-      transition: background .4s, height .4s;
-      min-height: 8px;
-    }
-    .level-bar.active { background: var(--blue); }
-    .level-bar.active.l1 { background: var(--green); }
-    .level-bar.active.l2 { background: var(--yellow); }
-    .level-bar.active.l3 { background: var(--red); }
-
-    /* ─── Blocks card ─────────────────────────────────────────── */
-    #card-blocks { grid-column: span 2; }
-    .blocks-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
-      gap: 8px;
-      max-height: 220px;
-      overflow-y: auto;
-    }
-    .block-chip {
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: 7px;
-      padding: 8px 10px;
-      font-size: 12px;
-    }
-    .block-chip .block-name {
-      font-weight: 600;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      margin-bottom: 4px;
-    }
-    .block-chip .block-rpm { color: var(--sub); font-size: 11px; }
-    .block-chip .block-level {
-      display: inline-block;
+    .kpi-state {
       font-size: 10px;
       font-weight: 700;
-      padding: 1px 6px;
-      border-radius: 3px;
-      background: var(--muted);
-      color: var(--sub);
-      margin-top: 4px;
+      letter-spacing: 0.08em;
     }
-    .block-chip .block-level.l0 { background: rgba(52,209,122,.15); color: var(--green); }
-    .block-chip .block-level.l1 { background: rgba(52,209,122,.15); color: var(--green); }
-    .block-chip .block-level.l2 { background: rgba(245,197,66,.12); color: var(--yellow); }
-    .block-chip .block-level.l3 { background: rgba(242,86,74,.13);  color: var(--red); }
-    .block-chip .block-level.suspended { background: rgba(242,86,74,.2); color: var(--red); }
+    .state-normal   { color: var(--green); }
+    .state-elevated { color: var(--yellow); }
+    .state-critical { color: var(--red); }
+    .state-active   { color: var(--green); }
+    .state-inactive { color: var(--sub); }
+    .state-sleeping { color: var(--yellow); }
 
-    /* ─── Learning card ───────────────────────────────────────── */
-    #card-learning { grid-column: span 2; }
-    .layer-row { margin-bottom: 10px; }
-    .layer-row:last-child { margin-bottom: 0; }
-    .layer-header { display: flex; justify-content: space-between; margin-bottom: 4px; }
-    .layer-name { font-size: 12px; color: var(--text); }
-    .layer-status { font-size: 11px; font-weight: 600; color: var(--sub); }
-    .layer-status.complete { color: var(--green); }
-    .layer-status.in_progress { color: var(--blue); }
-    .layer-track {
-      height: 4px;
-      background: var(--muted);
-      border-radius: 2px;
-      overflow: hidden;
-    }
-    .layer-fill {
-      height: 100%;
-      border-radius: 2px;
-      background: var(--muted);
-      transition: width .8s ease, background .4s;
-    }
-    .layer-fill.complete { background: var(--green); }
-    .layer-fill.in_progress { background: var(--blue); }
+    /* ─── Panels ──────────────────────────────────────────────────────────────── */
+    .panel-row { display: grid; }
+    .panel-row.cols-2 { grid-template-columns: 1fr 1fr; }
 
-    /* ─── Policies card ───────────────────────────────────────── */
-    #card-policies { grid-column: span 2; }
-    .policy-table { width: 100%; border-collapse: collapse; font-size: 12px; }
-    .policy-table th {
+    .panel {
+      border-bottom: 1px solid var(--border);
+      border-right: 1px solid var(--border);
+    }
+    .panel.no-right  { border-right: none; }
+    .panel.no-bottom { border-bottom: none; }
+
+    .panel-header {
+      padding: 6px 12px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .panel-title { color: var(--text); font-size: 10px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; }
+    .panel-meta  { color: var(--sub);  font-size: 10px; }
+    .panel-body  { padding: 12px; }
+
+    /* ─── Chart ───────────────────────────────────────────────────────────────── */
+    #chart-container {
+      padding: 12px;
+      height: 190px;
+      position: relative;
+    }
+
+    /* ─── Data table ──────────────────────────────────────────────────────────── */
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+
+    .data-table th {
+      padding: 5px 10px;
       text-align: left;
-      padding: 0 8px 6px;
       color: var(--sub);
-      font-weight: 600;
-      font-size: 11px;
-      letter-spacing: .05em;
+      font-size: 10px;
+      letter-spacing: 0.1em;
       text-transform: uppercase;
       border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      font-weight: 400;
     }
-    .policy-table td {
-      padding: 7px 8px;
-      border-bottom: 1px solid var(--border);
+
+    .data-table td {
+      padding: 6px 10px;
       color: var(--text);
+      border-bottom: 1px solid var(--border);
     }
-    .policy-table tbody tr:last-child td { border-bottom: none; }
-    .policy-table .policy-action {
+
+    .data-table tbody tr:nth-child(even) td { background: var(--surface); }
+    .data-table tbody tr:hover td { background: rgba(255,102,0,0.05); }
+    .data-table tbody tr:last-child td { border-bottom: none; }
+
+    /* ─── Badges ──────────────────────────────────────────────────────────────── */
+    .badge {
       display: inline-block;
-      padding: 1px 7px;
-      border-radius: 3px;
+      padding: 1px 6px;
       font-size: 10px;
       font-weight: 700;
+      letter-spacing: 0.05em;
+      border: 1px solid currentColor;
     }
-    .policy-action.serve_fully    { background: rgba(52,209,122,.15); color: var(--green); }
-    .policy-action.serve_limited  { background: rgba(79,142,247,.12); color: var(--blue); }
-    .policy-action.suspend        { background: rgba(242,86,74,.13);  color: var(--red); }
-    .policy-action.allow          { background: rgba(167,139,250,.12); color: var(--purple); }
-    .empty-state { color: var(--sub); font-size: 12px; padding: 12px 0; }
 
-    /* ─── Controls card ───────────────────────────────────────── */
-    #card-controls { grid-column: span 2; }
-    .btn-row { display: flex; flex-wrap: wrap; gap: 8px; }
+    .badge-green  { color: var(--green); }
+    .badge-yellow { color: var(--yellow); }
+    .badge-red    { color: var(--red); animation: blink 1s step-end infinite; }
+    .badge-cyan   { color: var(--cyan); }
+    .badge-dim    { color: var(--sub); border-color: var(--sub); }
+
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0; }
+    }
+
+    /* ─── Inline RPM bar ──────────────────────────────────────────────────────── */
+    .rpm-inline { display: flex; align-items: center; gap: 6px; }
+
+    .rpm-bar-track { flex: 1; height: 2px; background: var(--border); max-width: 70px; }
+    .rpm-bar-fill  { height: 100%; background: var(--text); }
+
+    /* ─── Buttons ─────────────────────────────────────────────────────────────── */
+    .btn-grid { display: flex; flex-wrap: wrap; gap: 6px; }
+
     .btn {
-      padding: 7px 16px;
-      border-radius: 6px;
-      border: 1px solid var(--border);
+      padding: 6px 14px;
       background: var(--bg);
+      border: 1px solid var(--text-2);
       color: var(--text);
-      font-size: 12px;
-      font-weight: 600;
+      font-family: var(--font);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
       cursor: pointer;
-      transition: background .15s, border-color .15s;
     }
-    .btn:hover { background: var(--muted); }
-    .btn.primary { background: var(--blue); border-color: var(--blue); color: #fff; }
-    .btn.primary:hover { background: #3a7de0; }
-    .btn.danger  { background: rgba(242,86,74,.12); border-color: var(--red); color: var(--red); }
-    .btn.danger:hover  { background: rgba(242,86,74,.22); }
-    .btn.warn    { background: rgba(245,197,66,.1); border-color: var(--yellow); color: var(--yellow); }
-    .btn.warn:hover    { background: rgba(245,197,66,.2); }
+    .btn:hover             { background: var(--text); color: var(--bg); border-color: var(--text); }
+    .btn.btn-danger        { border-color: var(--red);    color: var(--red); }
+    .btn.btn-danger:hover  { background: var(--red);      color: var(--bg); }
+    .btn.btn-warn          { border-color: var(--yellow); color: var(--yellow); }
+    .btn.btn-warn:hover    { background: var(--yellow);   color: var(--bg); }
+    .btn.btn-green         { border-color: var(--green);  color: var(--green); }
+    .btn.btn-green:hover   { background: var(--green);    color: var(--bg); }
 
-    .preset-title { font-size: 11px; color: var(--sub); margin: 10px 0 6px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; }
-
-    /* ─── Scrollbar ───────────────────────────────────────────── */
-    ::-webkit-scrollbar { width: 6px; height: 6px; }
-    ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: var(--muted); border-radius: 3px; }
-
-    /* ─── Responsive ──────────────────────────────────────────── */
-    @media (max-width: 900px) {
-      main { grid-template-columns: repeat(2, 1fr); }
-      #card-status, #card-rpm, #card-level,
-      #card-chart, #card-blocks, #card-learning,
-      #card-policies, #card-controls { grid-column: span 2; }
+    .section-label {
+      color: var(--sub);
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      margin: 10px 0 6px;
     }
-    @media (max-width: 560px) {
-      main { grid-template-columns: 1fr; }
-      #card-status, #card-rpm, #card-level,
-      #card-chart, #card-blocks, #card-learning,
-      #card-policies, #card-controls { grid-column: span 1; }
+
+    /* ─── Preset cards ────────────────────────────────────────────────────────── */
+    .preset-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+
+    .preset-card {
+      padding: 9px 11px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      cursor: pointer;
     }
+    .preset-card:hover              { border-color: var(--text-2); background: var(--surface-2); }
+    .preset-card.danger             { border-color: rgba(255,0,0,0.25); }
+    .preset-card.danger:hover       { border-color: var(--red); background: rgba(255,0,0,0.04); }
+    .preset-card.danger .preset-name { color: var(--red); }
+
+    .preset-name {
+      color: var(--label);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      margin-bottom: 3px;
+    }
+    .preset-desc { color: var(--sub); font-size: 10px; line-height: 1.4; }
+
+    /* ─── Learning layers ─────────────────────────────────────────────────────── */
+    .layer-item {
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .layer-item:last-child { border-bottom: none; }
+
+    .layer-top { display: flex; justify-content: space-between; margin-bottom: 5px; }
+    .layer-name { color: var(--label); font-size: 11px; letter-spacing: 0.05em; }
+    .layer-pct  { color: var(--text);  font-size: 11px; font-variant-numeric: tabular-nums; }
+
+    .layer-track { height: 2px; background: var(--border); }
+    .layer-fill  { height: 100%; background: var(--sub); }
+    .layer-fill.complete    { background: var(--green); }
+    .layer-fill.in_progress { background: var(--text); }
+
+    .layer-detail { margin-top: 4px; color: var(--sub); font-size: 10px; }
+
+    /* ─── History event types ─────────────────────────────────────────────────── */
+    .event-activated     { color: var(--green); }
+    .event-level_change  { color: var(--yellow); }
+    .event-fully_restored{ color: var(--cyan); }
+
+    /* ─── Policy actions ──────────────────────────────────────────────────────── */
+    .action-serve_fully    { color: var(--green); }
+    .action-serve_limited  { color: var(--cyan); }
+    .action-suspend        { color: var(--red); }
+    .action-allow          { color: var(--yellow); }
+
+    /* ─── Misc ────────────────────────────────────────────────────────────────── */
+    .empty {
+      color: var(--sub);
+      font-size: 11px;
+      padding: 18px 10px;
+      text-align: center;
+    }
+
+    .full-scroll { overflow-y: auto; max-height: calc(100vh - 82px); }
+
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: var(--sub); }
   </style>
 </head>
 <body>
 
-<header>
-  <div class="logo">CHAKRA<span> Dashboard</span></div>
-  <div class="spacer"></div>
-  <div id="ws-dot"></div>
-  <span id="ws-label">disconnected</span>
-  &nbsp;&nbsp;
-  <span id="last-updated">–</span>
-</header>
-
-<main>
-
-  <!-- Status -->
-  <div class="card" id="card-status">
-    <div class="card-title">System Status</div>
-    <div id="status-badge" class="status-badge inactive">
-      <span class="status-dot"></span>
-      <span id="status-text">Inactive</span>
+<!-- ─── Sidebar ──────────────────────────────────────────────────────────────── -->
+<div id="sidebar">
+  <div id="sidebar-header">
+    <span id="sidebar-logo">◈ CHAKRA</span>
+    <div id="sidebar-version">v0.1.0 // TERMINAL</div>
+  </div>
+  <nav id="sidebar-nav">
+    <button class="nav-item active" data-screen="overview" onclick="switchScreen('overview')"></button>
+    <button class="nav-item"        data-screen="ringmap"  onclick="switchScreen('ringmap')"></button>
+    <button class="nav-item"        data-screen="policies" onclick="switchScreen('policies')"></button>
+    <button class="nav-item"        data-screen="learning" onclick="switchScreen('learning')"></button>
+    <button class="nav-item"        data-screen="history"  onclick="switchScreen('history')"></button>
+  </nav>
+  <div id="sidebar-footer">
+    <div id="ws-status">
+      <span id="ws-dot">○</span>
+      <span id="ws-label">OFFLINE</span>
     </div>
-    <div class="stat-row"><span class="stat-label">Mode</span><span class="stat-val" id="stat-mode">–</span></div>
-    <div class="stat-row"><span class="stat-label">Level</span><span class="stat-val" id="stat-level">–</span></div>
-    <div class="stat-row"><span class="stat-label">Phase</span><span class="stat-val" id="stat-phase">–</span></div>
+    <div id="last-updated">–</div>
+  </div>
+</div>
+
+<!-- ─── Main ─────────────────────────────────────────────────────────────────── -->
+<div id="main">
+
+  <div id="topbar">
+    <span id="topbar-title">OVERVIEW</span>
+    <span id="topbar-sep">//</span>
+    <span id="topbar-subtitle">SYSTEM MONITOR</span>
+    <span id="topbar-time"></span>
   </div>
 
-  <!-- RPM Gauge -->
-  <div class="card" id="card-rpm">
-    <div class="card-title">Global RPM</div>
-    <div class="rpm-big" id="rpm-value">0</div>
-    <div class="rpm-sub" id="rpm-sub">requests / minute</div>
-    <div class="rpm-bar-track"><div class="rpm-bar-fill" id="rpm-bar"></div></div>
-    <div class="rpm-thresholds">
-      <span id="thr-l1">L1 –</span>
-      <span id="thr-l2">L2 –</span>
-      <span id="thr-l3">L3 –</span>
+  <!-- OVERVIEW ──────────────────────────────────────────────────────────────── -->
+  <div class="screen active" id="screen-overview">
+
+    <div id="kpi-bar">
+      <div class="kpi-tile">
+        <div class="kpi-label">GLOBAL RPM</div>
+        <div class="kpi-value" id="kpi-rpm">000</div>
+        <div class="kpi-state state-normal" id="kpi-rpm-state">[NORMAL]</div>
+      </div>
+      <div class="kpi-tile">
+        <div class="kpi-label">STATUS</div>
+        <div class="kpi-value" id="kpi-status" style="font-size:20px;padding-top:5px">INACTIVE</div>
+        <div class="kpi-state state-inactive" id="kpi-status-state">[STANDBY]</div>
+      </div>
+      <div class="kpi-tile">
+        <div class="kpi-label">ACTIVE LEVEL</div>
+        <div class="kpi-value" id="kpi-level">–</div>
+        <div class="kpi-state" id="kpi-level-state" style="color:var(--sub)">[DORMANT]</div>
+      </div>
+      <div class="kpi-tile">
+        <div class="kpi-label">MODE // PHASE</div>
+        <div class="kpi-value" id="kpi-mode" style="font-size:20px;padding-top:5px">–</div>
+        <div class="kpi-state" id="kpi-phase" style="color:var(--text-2)">[–]</div>
+      </div>
+    </div>
+
+    <div class="panel no-right">
+      <div class="panel-header">
+        <span class="panel-title">RPM HISTORY // 30-MIN ROLLING</span>
+        <span class="panel-meta" id="chart-meta">NO DATA</span>
+      </div>
+      <div id="chart-container">
+        <canvas id="rpm-chart"></canvas>
+      </div>
+    </div>
+
+    <div class="panel-row cols-2">
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">BLOCK REGISTER</span>
+          <span class="panel-meta" id="blocks-meta">0 BLOCKS</span>
+        </div>
+        <div style="overflow-y:auto;max-height:260px">
+          <table class="data-table">
+            <thead><tr><th>BLOCK</th><th>RPM</th><th>LVL</th><th>STATUS</th></tr></thead>
+            <tbody id="blocks-tbody"><tr><td colspan="4" class="empty">NO BLOCKS REGISTERED</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="panel no-right">
+        <div class="panel-header">
+          <span class="panel-title">ACTIVATION CONTROLS</span>
+        </div>
+        <div class="panel-body">
+          <div class="section-label">MANUAL CONTROL</div>
+          <div class="btn-grid">
+            <button class="btn btn-green"  onclick="doActivate()">ACTIVATE</button>
+            <button class="btn btn-warn"   onclick="doActivate(1)">LEVEL 1</button>
+            <button class="btn btn-warn"   onclick="doActivate(2)">LEVEL 2</button>
+            <button class="btn btn-danger" onclick="doActivate(3)">LEVEL 3</button>
+            <button class="btn"            onclick="doDeactivate()">DEACTIVATE</button>
+          </div>
+          <div class="section-label" style="margin-top:14px">EMERGENCY PRESETS</div>
+          <div class="preset-grid">
+            <div class="preset-card danger" onclick="doPreset('suspend-non-essential')">
+              <div class="preset-name">SUSPEND NON-ESSENTIAL</div>
+              <div class="preset-desc">Suspend all non-critical blocks immediately</div>
+            </div>
+            <div class="preset-card danger" onclick="doPreset('checkout-only')">
+              <div class="preset-name">CHECKOUT ONLY</div>
+              <div class="preset-desc">Only payment &amp; checkout survive</div>
+            </div>
+            <div class="preset-card" onclick="doPreset('cache-everything')">
+              <div class="preset-name">CACHE EVERYTHING</div>
+              <div class="preset-desc">Serve all requests from cache layer</div>
+            </div>
+            <div class="preset-card" onclick="doPreset('restore-all')">
+              <div class="preset-name">RESTORE ALL</div>
+              <div class="preset-desc">Remove all preset rules, full restore</div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 
-  <!-- RPM Chart -->
-  <div class="card" id="card-chart">
-    <div class="card-title">RPM History</div>
-    <canvas id="rpm-canvas"></canvas>
-  </div>
-
-  <!-- Level bars -->
-  <div class="card" id="card-level">
-    <div class="card-title">Activation Level</div>
-    <div class="level-display" id="level-bars"></div>
-    <div class="stat-row"><span class="stat-label">Activated</span><span class="stat-val" id="stat-activated">–</span></div>
-    <div class="stat-row"><span class="stat-label">Auto triggers</span><span class="stat-val" id="stat-triggers">–</span></div>
-  </div>
-
-  <!-- Blocks -->
-  <div class="card" id="card-blocks">
-    <div class="card-title">Blocks</div>
-    <div class="blocks-grid" id="blocks-grid"><p class="empty-state">No blocks registered.</p></div>
-  </div>
-
-  <!-- Learning -->
-  <div class="card" id="card-learning">
-    <div class="card-title">Shadow Mode Learning</div>
-    <div id="learning-layers"></div>
-  </div>
-
-  <!-- Policies -->
-  <div class="card" id="card-policies">
-    <div class="card-title">Active Policies</div>
-    <div id="policies-wrap"><p class="empty-state">No policies configured.</p></div>
-  </div>
-
-  <!-- Controls -->
-  <div class="card" id="card-controls">
-    <div class="card-title">Controls</div>
-    <div class="btn-row">
-      <button class="btn primary" onclick="doActivate()">Activate</button>
-      <button class="btn warn"    onclick="doActivate(1)">Level 1</button>
-      <button class="btn warn"    onclick="doActivate(2)">Level 2</button>
-      <button class="btn danger"  onclick="doActivate(3)">Level 3</button>
-      <button class="btn"         onclick="doDeactivate()">Deactivate</button>
-    </div>
-    <div class="preset-title">Emergency Presets</div>
-    <div class="btn-row">
-      <button class="btn danger" onclick="doPreset('suspend-non-essential')">Suspend Non-Essential</button>
-      <button class="btn danger" onclick="doPreset('checkout-only')">Checkout Only</button>
-      <button class="btn warn"   onclick="doPreset('cache-everything')">Cache Everything</button>
-      <button class="btn"        onclick="doPreset('restore-all')">Restore All</button>
+  <!-- RING MAP ──────────────────────────────────────────────────────────────── -->
+  <div class="screen" id="screen-ringmap">
+    <div class="panel no-right no-bottom">
+      <div class="panel-header">
+        <span class="panel-title">RING MAP // BLOCK REGISTER</span>
+        <span class="panel-meta" id="ringmap-meta">–</span>
+      </div>
+      <div class="full-scroll">
+        <table class="data-table" id="ringmap-table">
+          <thead><tr><th>BLOCK NAME</th><th>MIN LEVEL</th><th>BASE WEIGHT</th><th>CURRENT RPM</th><th>STATUS</th></tr></thead>
+          <tbody id="ringmap-tbody"><tr><td colspan="5" class="empty">NO BLOCKS REGISTERED</td></tr></tbody>
+        </table>
+      </div>
     </div>
   </div>
 
-</main>
+  <!-- POLICIES ─────────────────────────────────────────────────────────────── -->
+  <div class="screen" id="screen-policies">
+    <div class="panel no-right" style="border-bottom:1px solid var(--border)">
+      <div class="panel-header">
+        <span class="panel-title">ACTIVE POLICY RULES</span>
+        <span class="panel-meta" id="policies-meta">0 RULES</span>
+      </div>
+      <div style="overflow-y:auto;max-height:280px">
+        <table class="data-table">
+          <thead><tr><th>NAME</th><th>PRIORITY</th><th>CONDITION</th><th>ACTION</th><th>HINT</th></tr></thead>
+          <tbody id="policies-tbody"><tr><td colspan="5" class="empty">NO POLICIES CONFIGURED</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="panel no-right no-bottom">
+      <div class="panel-header"><span class="panel-title">EMERGENCY PRESETS</span></div>
+      <div class="panel-body">
+        <div class="preset-grid">
+          <div class="preset-card danger" onclick="doPreset('suspend-non-essential')">
+            <div class="preset-name">SUSPEND NON-ESSENTIAL</div>
+            <div class="preset-desc">Suspend all blocks except payment, checkout, auth</div>
+          </div>
+          <div class="preset-card danger" onclick="doPreset('checkout-only')">
+            <div class="preset-name">CHECKOUT ONLY</div>
+            <div class="preset-desc">Only payment and checkout blocks survive</div>
+          </div>
+          <div class="preset-card" onclick="doPreset('cache-everything')">
+            <div class="preset-name">CACHE EVERYTHING</div>
+            <div class="preset-desc">Route all blocks to cache, serve stale</div>
+          </div>
+          <div class="preset-card" onclick="doPreset('restore-all')">
+            <div class="preset-name">RESTORE ALL</div>
+            <div class="preset-desc">Remove all preset rules, full restore</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- LEARNING ─────────────────────────────────────────────────────────────── -->
+  <div class="screen" id="screen-learning">
+    <div class="panel no-right no-bottom">
+      <div class="panel-header">
+        <span class="panel-title">SHADOW MODE // LEARNING LAYERS</span>
+        <span class="panel-meta" id="learning-meta">–</span>
+      </div>
+      <div class="panel-body" id="learning-layers" style="max-width:720px">
+        <p class="empty">LOADING...</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- HISTORY ──────────────────────────────────────────────────────────────── -->
+  <div class="screen" id="screen-history">
+    <div class="panel no-right no-bottom">
+      <div class="panel-header">
+        <span class="panel-title">ACTIVATION LOG // INCIDENT HISTORY</span>
+        <span class="panel-meta" id="history-meta">–</span>
+      </div>
+      <div class="full-scroll">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>TIMESTAMP</th>
+              <th>EVENT</th>
+              <th>LEVEL</th>
+              <th>RPM</th>
+              <th>MODE</th>
+              <th>INITIATED BY</th>
+              <th>REASON</th>
+            </tr>
+          </thead>
+          <tbody id="history-tbody"><tr><td colspan="7" class="empty">NO HISTORY</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div>
 
 <script>
-// ─── State ───────────────────────────────────────────────────────────────────
-const rpmHistory = [];       // { timestamp, rpm }[]
-let config = null;
-let ws = null;
-let wsRetryMs = 2000;
+// ─── Constants ────────────────────────────────────────────────────────────────
+const NAV_LABELS = {
+  overview: 'OVERVIEW',
+  ringmap:  'RING MAP',
+  policies: 'POLICIES',
+  learning: 'LEARNING',
+  history:  'HISTORY',
+};
 
-// ─── Fetch helpers ────────────────────────────────────────────────────────────
+const TOPBAR_META = {
+  overview: 'SYSTEM MONITOR',
+  ringmap:  'BLOCK REGISTER',
+  policies: 'RULE ENGINE',
+  learning: 'SHADOW MODE',
+  history:  'INCIDENT LOG',
+};
+
+// ─── State ────────────────────────────────────────────────────────────────────
+const rpmHistory = [];
+let config        = null;
+let chart         = null;
+let ws            = null;
+let wsRetryMs     = 2000;
+let currentScreen = 'overview';
+let lastBlocksData = null;
+const counters = {};
+
+// ─── Screen switching ─────────────────────────────────────────────────────────
+function switchScreen(name) {
+  currentScreen = name;
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById('screen-' + name).classList.add('active');
+
+  document.querySelectorAll('.nav-item').forEach(n => {
+    const isActive = n.dataset.screen === name;
+    n.classList.toggle('active', isActive);
+    n.textContent = isActive
+      ? `>> ${NAV_LABELS[n.dataset.screen]}`
+      : `   [>] ${NAV_LABELS[n.dataset.screen]}`;
+  });
+
+  document.getElementById('topbar-title').textContent    = NAV_LABELS[name];
+  document.getElementById('topbar-subtitle').textContent = TOPBAR_META[name];
+
+  if (name === 'ringmap' && lastBlocksData) renderRingMap(lastBlocksData);
+  if (name === 'history') loadHistory();
+}
+
+// Initialise nav labels
+document.querySelectorAll('.nav-item').forEach(n => {
+  const isActive = n.dataset.screen === currentScreen;
+  n.textContent = isActive
+    ? `>> ${NAV_LABELS[n.dataset.screen]}`
+    : `   [>] ${NAV_LABELS[n.dataset.screen]}`;
+});
+
+// ─── Clock ────────────────────────────────────────────────────────────────────
+function updateClock() {
+  const n = new Date();
+  const d = n.toLocaleDateString('en-US', { weekday:'short', month:'short', day:'2-digit' });
+  const t = n.toLocaleTimeString('en-US', { hour12: false });
+  document.getElementById('topbar-time').textContent = `${d} ${t}`;
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// ─── API ──────────────────────────────────────────────────────────────────────
 async function apiFetch(path, opts) {
   const r = await fetch(path, opts);
   if (!r.ok) throw new Error(await r.text());
   return r.json();
 }
 
-// ─── Refresh loop ─────────────────────────────────────────────────────────────
+// ─── Main refresh ─────────────────────────────────────────────────────────────
 async function refresh() {
   try {
     const [status, rpmData, blocksData, policiesData, learningData, cfgData] = await Promise.all([
@@ -420,232 +678,417 @@ async function refresh() {
       apiFetch('/api/config'),
     ]);
     config = cfgData;
+    lastBlocksData = blocksData;
     renderStatus(status);
     renderRPM(rpmData);
     renderBlocks(blocksData);
     renderPolicies(policiesData);
     renderLearning(learningData);
-    document.getElementById('last-updated').textContent = 'Updated ' + new Date().toLocaleTimeString();
-  } catch (e) {
-    document.getElementById('last-updated').textContent = 'Fetch error';
+    if (currentScreen === 'ringmap') renderRingMap(blocksData);
+    const t = new Date().toLocaleTimeString('en-US', { hour12: false });
+    document.getElementById('last-updated').textContent = t;
+  } catch {
+    document.getElementById('last-updated').textContent = 'ERR';
   }
 }
 
-// ─── Status ───────────────────────────────────────────────────────────────────
+// ─── Status + KPI tiles ───────────────────────────────────────────────────────
 function renderStatus(s) {
-  const badge = document.getElementById('status-badge');
-  const txt   = document.getElementById('status-text');
-  badge.className = 'status-badge ' + (s.active ? 'active' : s.sleeping ? 'sleeping' : 'inactive');
-  txt.textContent = s.active ? 'Active' : s.sleeping ? 'Sleeping' : 'Inactive';
+  const statusEl    = document.getElementById('kpi-status');
+  const statusState = document.getElementById('kpi-status-state');
 
-  document.getElementById('stat-mode').textContent  = s.mode  ?? '–';
-  document.getElementById('stat-level').textContent = s.active ? `Level ${s.level}` : '–';
-  document.getElementById('stat-phase').textContent = s.phase !== undefined ? `Phase ${s.phase}` : '–';
+  if (s.active) {
+    statusEl.textContent    = 'ACTIVE';
+    statusEl.style.color    = 'var(--green)';
+    statusState.textContent = '[PROTECTING]';
+    statusState.className   = 'kpi-state state-active';
+  } else if (s.sleeping) {
+    statusEl.textContent    = 'SLEEPING';
+    statusEl.style.color    = 'var(--yellow)';
+    statusState.textContent = '[RESTORING]';
+    statusState.className   = 'kpi-state state-sleeping';
+  } else {
+    statusEl.textContent    = 'INACTIVE';
+    statusEl.style.color    = 'var(--label)';
+    statusState.textContent = '[STANDBY]';
+    statusState.className   = 'kpi-state state-inactive';
+  }
 
-  // Level bars
-  renderLevelBars(s.active ? (s.level ?? 0) : 0);
+  const levelEl    = document.getElementById('kpi-level');
+  const levelState = document.getElementById('kpi-level-state');
+  const lvlColors  = ['var(--label)', 'var(--green)', 'var(--yellow)', 'var(--red)'];
+  const lvlLabels  = ['[MONITORING]', '[DEGRADED-1]', '[DEGRADED-2]', '[CRITICAL]'];
+  const lvlClasses = ['kpi-state', 'kpi-state state-normal', 'kpi-state state-elevated', 'kpi-state state-critical'];
 
-  document.getElementById('stat-activated').textContent = s.activatedAt
-    ? new Date(s.activatedAt).toLocaleTimeString() : '–';
-  document.getElementById('stat-triggers').textContent = s.autoTriggerCount ?? '–';
-}
+  if (s.active && s.level !== undefined) {
+    levelEl.textContent       = `L${s.level}`;
+    levelEl.style.color       = lvlColors[s.level] || 'var(--label)';
+    levelState.textContent    = lvlLabels[s.level]  || '[ACTIVE]';
+    levelState.className      = lvlClasses[s.level] || 'kpi-state';
+    levelState.style.color    = '';
+  } else {
+    levelEl.textContent       = '–';
+    levelEl.style.color       = 'var(--label)';
+    levelState.textContent    = '[DORMANT]';
+    levelState.className      = 'kpi-state';
+    levelState.style.color    = 'var(--sub)';
+  }
 
-function renderLevelBars(currentLevel) {
-  const container = document.getElementById('level-bars');
-  container.innerHTML = '';
-  const heights = [30, 55, 80, 110];
-  ['–', 'L1', 'L2', 'L3'].forEach((label, i) => {
-    const bar = document.createElement('div');
-    bar.className = 'level-bar' + (i > 0 && i <= currentLevel ? ` active l${i}` : '');
-    bar.style.height = heights[i] + 'px';
-    bar.title = label;
-    container.appendChild(bar);
-  });
+  document.getElementById('kpi-mode').textContent  = (s.mode ?? '–').toUpperCase();
+  document.getElementById('kpi-phase').textContent = s.phase !== undefined ? `[PHASE ${s.phase}]` : '[–]';
 }
 
 // ─── RPM ──────────────────────────────────────────────────────────────────────
 function renderRPM(data) {
-  const current = data.current;
-  const rpm = Math.round(current.global ?? 0);
+  const rpm = Math.round(data.current?.global ?? 0);
+  animateCounter('kpi-rpm', rpm);
 
-  document.getElementById('rpm-value').textContent = rpm;
+  const t1 = config?.activation?.level1_threshold;
+  const t2 = config?.activation?.level2_threshold;
+  const t3 = config?.activation?.level3_threshold;
 
-  // Merge server history into local buffer
-  if (data.history && data.history.length) {
-    const newEntries = data.history.filter(
-      h => !rpmHistory.some(e => e.timestamp === h.timestamp)
-    );
-    rpmHistory.push(...newEntries);
+  const rpmStateEl = document.getElementById('kpi-rpm-state');
+  if (t3 && rpm >= t3) {
+    rpmStateEl.textContent = '[CRITICAL]'; rpmStateEl.className = 'kpi-state state-critical';
+  } else if (t2 && rpm >= t2) {
+    rpmStateEl.textContent = '[ELEVATED]'; rpmStateEl.className = 'kpi-state state-elevated';
+  } else {
+    rpmStateEl.textContent = '[NORMAL]';   rpmStateEl.className = 'kpi-state state-normal';
+  }
+
+  if (data.history?.length) {
+    for (const h of data.history) {
+      if (!rpmHistory.some(e => e.timestamp === h.timestamp)) rpmHistory.push(h);
+    }
     rpmHistory.sort((a, b) => a.timestamp - b.timestamp);
-    // Keep last 360
     if (rpmHistory.length > 360) rpmHistory.splice(0, rpmHistory.length - 360);
   }
 
-  // Thresholds from config
-  const t1 = config?.activation?.level1_threshold ?? null;
-  const t2 = config?.activation?.level2_threshold ?? null;
-  const t3 = config?.activation?.level3_threshold ?? null;
-  const maxRpm = Math.max(rpm, t3 ?? t2 ?? t1 ?? 100, ...rpmHistory.map(h => h.rpm), 1);
+  updateChart(t1, t2, t3);
+}
 
-  // Bar
-  const bar = document.getElementById('rpm-bar');
-  const pct = Math.min(100, (rpm / maxRpm) * 100);
-  bar.style.width = pct + '%';
-  bar.className = 'rpm-bar-fill' + (t3 && rpm >= t3 ? ' crit' : t2 && rpm >= t2 ? ' warn' : '');
-
-  // Threshold labels
-  document.getElementById('thr-l1').textContent = t1 ? `L1 ${t1}` : '';
-  document.getElementById('thr-l2').textContent = t2 ? `L2 ${t2}` : '';
-  document.getElementById('thr-l3').textContent = t3 ? `L3 ${t3}` : '';
-
-  drawChart(maxRpm, t1, t2, t3);
+// ─── Counter animation ────────────────────────────────────────────────────────
+function animateCounter(id, target) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const current = parseInt(el.textContent) || 0;
+  if (current === target) return;
+  if (counters[id]) clearInterval(counters[id]);
+  const step = target > current ? 1 : -1;
+  const diff = Math.abs(target - current);
+  const inc  = Math.max(1, Math.floor(diff / 8));
+  counters[id] = setInterval(() => {
+    const v    = parseInt(el.textContent) || 0;
+    const next = v + step * inc;
+    if ((step > 0 && next >= target) || (step < 0 && next <= target)) {
+      el.textContent = String(target).padStart(3, '0');
+      clearInterval(counters[id]);
+    } else {
+      el.textContent = String(next).padStart(3, '0');
+    }
+  }, 20);
 }
 
 // ─── Chart ────────────────────────────────────────────────────────────────────
-function drawChart(maxRpm, t1, t2, t3) {
-  const canvas = document.getElementById('rpm-canvas');
-  const dpr = window.devicePixelRatio || 1;
-  const rect = canvas.getBoundingClientRect();
-  if (!rect.width) return;
-  canvas.width  = rect.width  * dpr;
-  canvas.height = 120 * dpr;
-  const ctx = canvas.getContext('2d');
-  ctx.scale(dpr, dpr);
+function updateChart(t1, t2, t3) {
+  const pts    = rpmHistory.slice(-120);
+  const labels = pts.map(p => {
+    const d = new Date(p.timestamp);
+    return `${d.getHours()}:${String(d.getMinutes()).padStart(2,'0')}`;
+  });
+  const values = pts.map(p => Math.round(p.rpm));
+  const maxY   = Math.max(...values, t3 ?? t2 ?? t1 ?? 100, 10) * 1.1;
 
-  const W = rect.width, H = 120;
-  ctx.clearRect(0, 0, W, H);
+  document.getElementById('chart-meta').textContent = pts.length
+    ? `${pts.length} SAMPLES // PEAK ${values.length ? Math.max(...values) : 0}`
+    : 'NO DATA';
 
-  if (!rpmHistory.length) return;
+  const annotations = {};
+  if (t1) annotations.t1 = thrAnnotation(t1, 'rgba(0,255,65,0.35)',  'rgba(0,255,65,0.6)',  'L1');
+  if (t2) annotations.t2 = thrAnnotation(t2, 'rgba(255,255,0,0.35)', 'rgba(255,255,0,0.6)', 'L2');
+  if (t3) annotations.t3 = thrAnnotation(t3, 'rgba(255,0,0,0.35)',   'rgba(255,0,0,0.6)',   'L3');
 
-  const pad = { t: 8, b: 18, l: 40, r: 12 };
-  const cw = W - pad.l - pad.r;
-  const ch = H - pad.t - pad.b;
-
-  // Threshold lines
-  const drawThr = (val, color) => {
-    if (!val) return;
-    const y = pad.t + ch - (val / maxRpm) * ch;
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 1;
-    ctx.setLineDash([4, 4]);
-    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l + cw, y); ctx.stroke();
-    ctx.setLineDash([]);
+  const cfg = {
+    type: 'line',
+    data: { labels, datasets: [{ data: values, borderColor: '#ff6600', borderWidth: 1.5, pointRadius: 0, tension: 0, fill: false }] },
+    options: {
+      animation: false,
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          enabled: true,
+          backgroundColor: '#0a0a0a',
+          borderColor: '#ff6600',
+          borderWidth: 1,
+          titleColor: '#ff6600',
+          bodyColor: '#ffffff',
+          titleFont: { family: 'JetBrains Mono, monospace', size: 10 },
+          bodyFont:  { family: 'JetBrains Mono, monospace', size: 11 },
+          callbacks: {
+            title: items => items[0]?.label ?? '',
+            label: item  => `RPM: ${item.raw}`,
+          }
+        },
+        annotation: { annotations }
+      },
+      scales: {
+        x: {
+          grid:   { color: 'rgba(255,102,0,0.05)', drawTicks: false },
+          ticks:  { color: '#664400', font: { family: 'JetBrains Mono, monospace', size: 9 }, maxTicksLimit: 6 },
+          border: { color: '#1a1a1a' }
+        },
+        y: {
+          min: 0,
+          max: Math.ceil(maxY),
+          grid:   { color: 'rgba(255,102,0,0.05)', drawTicks: false },
+          ticks:  { color: '#664400', font: { family: 'JetBrains Mono, monospace', size: 9 }, maxTicksLimit: 5 },
+          border: { color: '#1a1a1a' }
+        }
+      }
+    }
   };
-  drawThr(t1, 'rgba(52,209,122,.4)');
-  drawThr(t2, 'rgba(245,197,66,.4)');
-  drawThr(t3, 'rgba(242,86,74,.4)');
 
-  // Y axis
-  ctx.fillStyle = '#7a8299';
-  ctx.font = '10px Inter, system-ui, sans-serif';
-  ctx.textAlign = 'right';
-  [0, Math.round(maxRpm / 2), maxRpm].forEach(v => {
-    const y = pad.t + ch - (v / maxRpm) * ch;
-    ctx.fillText(v, pad.l - 5, y + 3);
-    ctx.strokeStyle = '#1f2535'; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l + cw, y); ctx.stroke();
-  });
-
-  // Line
-  const pts = rpmHistory.slice(-120);
-  if (pts.length < 2) return;
-
-  const xOf = i => pad.l + (i / (pts.length - 1)) * cw;
-  const yOf = v => pad.t + ch - Math.min(1, v / maxRpm) * ch;
-
-  // Gradient fill
-  const grad = ctx.createLinearGradient(0, pad.t, 0, pad.t + ch);
-  grad.addColorStop(0,   'rgba(79,142,247,.35)');
-  grad.addColorStop(1,   'rgba(79,142,247,.02)');
-  ctx.fillStyle = grad;
-  ctx.beginPath();
-  ctx.moveTo(xOf(0), yOf(pts[0].rpm));
-  pts.forEach((p, i) => ctx.lineTo(xOf(i), yOf(p.rpm)));
-  ctx.lineTo(xOf(pts.length - 1), pad.t + ch);
-  ctx.lineTo(xOf(0), pad.t + ch);
-  ctx.closePath();
-  ctx.fill();
-
-  // Line itself
-  ctx.strokeStyle = '#4f8ef7';
-  ctx.lineWidth = 1.5;
-  ctx.lineJoin = 'round';
-  ctx.beginPath();
-  pts.forEach((p, i) => i === 0 ? ctx.moveTo(xOf(0), yOf(p.rpm)) : ctx.lineTo(xOf(i), yOf(p.rpm)));
-  ctx.stroke();
-
-  // X axis labels
-  ctx.fillStyle = '#7a8299';
-  ctx.textAlign = 'center';
-  ctx.font = '10px Inter, system-ui, sans-serif';
-  const first = pts[0].timestamp, last = pts[pts.length - 1].timestamp;
-  [[0, first], [pts.length - 1, last]].forEach(([i, ts]) => {
-    const d = new Date(ts);
-    ctx.fillText(`${d.getHours()}:${String(d.getMinutes()).padStart(2,'0')}`, xOf(i), H - 4);
-  });
+  if (!chart) {
+    chart = new Chart(document.getElementById('rpm-chart').getContext('2d'), cfg);
+  } else {
+    chart.data.labels              = labels;
+    chart.data.datasets[0].data   = values;
+    chart.options.scales.y.max    = Math.ceil(maxY);
+    if (chart.options.plugins.annotation) chart.options.plugins.annotation.annotations = annotations;
+    chart.update('none');
+  }
 }
 
-// ─── Blocks ───────────────────────────────────────────────────────────────────
-function renderBlocks(data) {
-  const grid = document.getElementById('blocks-grid');
-  const blocks = data.blocks ?? [];
-  if (!blocks.length) { grid.innerHTML = '<p class="empty-state">No blocks registered.</p>'; return; }
+function thrAnnotation(val, borderColor, labelColor, text) {
+  return {
+    type: 'line',
+    yMin: val, yMax: val,
+    borderColor,
+    borderWidth: 1,
+    borderDash: [4, 4],
+    label: {
+      content: text,
+      display: true,
+      position: 'end',
+      color: labelColor,
+      font: { family: 'JetBrains Mono, monospace', size: 9 },
+      backgroundColor: 'transparent',
+    }
+  };
+}
 
-  grid.innerHTML = blocks.map(b => {
-    const lvl = b.suspended ? 'suspended' : `l${b.minLevel ?? 0}`;
-    const bRpm = data.perBlockRpm?.[b.name] ?? 0;
-    return `<div class="block-chip">
-      <div class="block-name" title="${b.name}">${b.name}</div>
-      <div class="block-rpm">${Math.round(bRpm)} rpm</div>
-      <span class="block-level ${lvl}">${b.suspended ? 'SUSPENDED' : `Min L${b.minLevel ?? 0}`}</span>
-    </div>`;
+// ─── Blocks (overview) ────────────────────────────────────────────────────────
+function renderBlocks(data) {
+  const tbody  = document.getElementById('blocks-tbody');
+  const meta   = document.getElementById('blocks-meta');
+  const blocks = data.blocks ?? [];
+  meta.textContent = `${blocks.length} BLOCKS`;
+
+  if (!blocks.length) {
+    tbody.innerHTML = '<tr><td colspan="4" class="empty">NO BLOCKS REGISTERED</td></tr>';
+    return;
+  }
+
+  const maxRpm = Math.max(...blocks.map(b => data.perBlockRpm?.[b.name] ?? 0), 1);
+  tbody.innerHTML = blocks.map(b => {
+    const rpm    = Math.round(data.perBlockRpm?.[b.name] ?? 0);
+    const barPct = Math.min(100, (rpm / maxRpm) * 100);
+    const lvl    = b.minLevel ?? 0;
+    const lvlColor = ['var(--sub)', 'var(--green)', 'var(--yellow)', 'var(--red)'][lvl] || 'var(--sub)';
+    const status = b.suspended
+      ? '<span class="badge badge-red">SUSPENDED</span>'
+      : '<span class="badge badge-green">ACTIVE</span>';
+    return `<tr>
+      <td style="color:var(--label)">${b.name}</td>
+      <td>
+        <div class="rpm-inline">
+          <span style="font-variant-numeric:tabular-nums">${rpm}</span>
+          <div class="rpm-bar-track"><div class="rpm-bar-fill" style="width:${barPct}%"></div></div>
+        </div>
+      </td>
+      <td style="color:${lvlColor}">L${lvl}</td>
+      <td>${status}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ─── Ring map ─────────────────────────────────────────────────────────────────
+function renderRingMap(data) {
+  const tbody    = document.getElementById('ringmap-tbody');
+  const meta     = document.getElementById('ringmap-meta');
+  const blocks   = data.blocks ?? [];
+  const suspended = blocks.filter(b => b.suspended).length;
+  meta.textContent = `${blocks.length} BLOCKS // ${suspended} SUSPENDED`;
+
+  if (!blocks.length) {
+    tbody.innerHTML = '<tr><td colspan="5" class="empty">NO BLOCKS REGISTERED</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = blocks.map(b => {
+    const rpm      = Math.round(data.perBlockRpm?.[b.name] ?? 0);
+    const lvl      = b.minLevel ?? 0;
+    const lvlColor = ['var(--sub)', 'var(--green)', 'var(--yellow)', 'var(--red)'][lvl] || 'var(--sub)';
+    const status   = b.suspended
+      ? '<span class="badge badge-red">SUSPENDED</span>'
+      : '<span class="badge badge-green">ACTIVE</span>';
+    return `<tr>
+      <td style="color:var(--label);font-weight:700">${b.name}</td>
+      <td style="color:${lvlColor}">L${lvl}</td>
+      <td style="color:var(--sub)">${b.weightBase ?? '–'}</td>
+      <td style="font-variant-numeric:tabular-nums">${rpm}</td>
+      <td>${status}</td>
+    </tr>`;
   }).join('');
 }
 
 // ─── Policies ─────────────────────────────────────────────────────────────────
 function renderPolicies(data) {
-  const wrap = document.getElementById('policies-wrap');
+  const tbody = document.getElementById('policies-tbody');
+  const meta  = document.getElementById('policies-meta');
   const rules = data.active ?? [];
-  if (!rules.length) { wrap.innerHTML = '<p class="empty-state">No policies configured.</p>'; return; }
+  meta.textContent = `${rules.length} RULES`;
 
-  wrap.innerHTML = `<table class="policy-table">
-    <thead><tr><th>Name</th><th>Priority</th><th>Action</th></tr></thead>
-    <tbody>${rules.map(r => `
-      <tr>
-        <td>${r.name}</td>
-        <td>${r.priority ?? '–'}</td>
-        <td><span class="policy-action ${r.then?.action ?? ''}">${r.then?.action ?? '–'}</span></td>
-      </tr>`).join('')}
-    </tbody>
-  </table>`;
+  if (!rules.length) {
+    tbody.innerHTML = '<tr><td colspan="5" class="empty">NO POLICIES CONFIGURED</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = rules.map(r => {
+    const action = r.then?.action ?? '–';
+    const cond   = Object.entries(r.if ?? {}).map(([k, v]) =>
+      `${k}:${Array.isArray(v) ? v.join(',') : v}`
+    ).join(' ') || '–';
+    return `<tr>
+      <td style="color:var(--label)">${r.name}</td>
+      <td style="font-variant-numeric:tabular-nums;color:var(--sub)">${r.priority ?? '–'}</td>
+      <td style="color:var(--sub);font-size:10px">${cond}</td>
+      <td class="action-${action}" style="font-weight:700">${action.toUpperCase()}</td>
+      <td style="color:var(--sub);font-size:10px">${r.then?.hint ?? '–'}</td>
+    </tr>`;
+  }).join('');
 }
 
 // ─── Learning ─────────────────────────────────────────────────────────────────
 function renderLearning(data) {
-  const container = document.getElementById('learning-layers');
+  const el   = document.getElementById('learning-layers');
+  const meta = document.getElementById('learning-meta');
+  meta.textContent = `DAY ${data.daysSinceInstall ?? 0} SINCE INSTALL`;
+
+  const appComplete   = data.layers?.appStructure?.complete    ?? false;
+  const trafficDays   = data.layers?.trafficPatterns?.daysOfData ?? 0;
+  const trafficDone   = data.layers?.trafficPatterns?.complete  ?? false;
+  const behaviourPct  = data.layers?.userBehaviour?.progressPercent ?? 0;
+  const behaviourDone = data.layers?.userBehaviour?.complete    ?? false;
+  const failureDone   = data.layers?.failureSignatures?.complete ?? false;
+  const awaitingStress = data.layers?.failureSignatures?.awaitingStressEvent ?? true;
+
   const layers = [
-    { name: 'App Structure',     st: data.layers?.appStructure?.complete     ? 'complete' : 'waiting', pct: data.layers?.appStructure?.complete ? 100 : 0 },
-    { name: 'Traffic Patterns',  st: data.layers?.trafficPatterns?.complete  ? 'complete' : 'waiting', pct: data.layers?.trafficPatterns?.daysOfData ? Math.min(100, (data.layers.trafficPatterns.daysOfData / 7) * 100) : 0 },
-    { name: 'User Behaviour',    st: data.layers?.userBehaviour?.complete    ? 'complete' : 'in_progress', pct: data.layers?.userBehaviour?.progressPercent ?? 0 },
-    { name: 'Failure Signatures',st: data.layers?.failureSignatures?.complete ? 'complete' : 'waiting', pct: data.layers?.failureSignatures?.complete ? 100 : 0 },
+    {
+      name:   'LAYER 1 // APP STRUCTURE',
+      desc:   `${data.layers?.appStructure?.endpointCount ?? 0} endpoints discovered`,
+      status: appComplete ? 'complete' : 'waiting',
+      pct:    appComplete ? 100 : 0,
+    },
+    {
+      name:   'LAYER 2 // TRAFFIC PATTERNS',
+      desc:   `${trafficDays} / 7 days of traffic data`,
+      status: trafficDone ? 'complete' : 'in_progress',
+      pct:    Math.min(100, (trafficDays / 7) * 100),
+    },
+    {
+      name:   'LAYER 3 // USER BEHAVIOUR',
+      desc:   `${data.layers?.userBehaviour?.conversionsObserved ?? 0} conversion journeys observed`,
+      status: behaviourDone ? 'complete' : 'in_progress',
+      pct:    behaviourPct,
+    },
+    {
+      name:   'LAYER 4 // FAILURE SIGNATURES',
+      desc:   awaitingStress ? 'AWAITING STRESS EVENT' : 'Stress event captured',
+      status: failureDone ? 'complete' : 'waiting',
+      pct:    failureDone ? 100 : 0,
+    },
   ];
 
-  container.innerHTML = layers.map(l => `
-    <div class="layer-row">
-      <div class="layer-header">
+  const stateTag = (s) => {
+    if (s === 'complete')    return '<span style="color:var(--green)">[COMPLETE]</span>';
+    if (s === 'in_progress') return '<span style="color:var(--text)">[IN PROGRESS]</span>';
+    return '<span style="color:var(--sub)">[WAITING]</span>';
+  };
+
+  const suggestions = [];
+  if (data.suggestions?.ringMap)       suggestions.push('RING MAP SUGGESTION READY');
+  if (data.suggestions?.rpmThresholds) suggestions.push('RPM THRESHOLDS SUGGESTION READY');
+
+  el.innerHTML = layers.map(l => `
+    <div class="layer-item">
+      <div class="layer-top">
         <span class="layer-name">${l.name}</span>
-        <span class="layer-status ${l.st}">${l.st === 'complete' ? 'Complete' : l.st === 'in_progress' ? 'In Progress' : 'Waiting'}</span>
+        <span class="layer-pct">${Math.round(l.pct)}%</span>
       </div>
-      <div class="layer-track"><div class="layer-fill ${l.st}" style="width:${l.pct}%"></div></div>
-    </div>`).join('');
+      <div class="layer-track">
+        <div class="layer-fill ${l.status}" style="width:${l.pct}%"></div>
+      </div>
+      <div class="layer-detail">${l.desc} &nbsp; ${stateTag(l.status)}</div>
+    </div>`).join('') +
+    (suggestions.length
+      ? `<div style="margin-top:12px;padding:9px 11px;border:1px solid var(--green);color:var(--green);font-size:10px;letter-spacing:0.06em">
+           ▶ ${suggestions.join(' // ')}
+         </div>`
+      : '');
+}
+
+// ─── History ──────────────────────────────────────────────────────────────────
+async function loadHistory() {
+  try {
+    const data   = await apiFetch('/api/history');
+    const tbody  = document.getElementById('history-tbody');
+    const meta   = document.getElementById('history-meta');
+    const events = data.activations ?? [];
+    meta.textContent = `${events.length} EVENTS`;
+
+    if (!events.length) {
+      tbody.innerHTML = '<tr><td colspan="7" class="empty">NO HISTORY</td></tr>';
+      return;
+    }
+
+    const kindColor = {
+      activated:      'var(--green)',
+      level_change:   'var(--yellow)',
+      fully_restored: 'var(--cyan)',
+    };
+
+    tbody.innerHTML = [...events].reverse().map(e => {
+      const ts  = new Date(e.timestamp).toLocaleString('en-US', {
+        month:'short', day:'2-digit',
+        hour:'2-digit', minute:'2-digit', second:'2-digit',
+        hour12: false,
+      });
+      const col = kindColor[e.kind] || 'var(--text)';
+      return `<tr>
+        <td style="color:var(--sub);font-size:10px;font-variant-numeric:tabular-nums">${ts}</td>
+        <td style="color:${col};font-weight:700">${(e.kind ?? '–').toUpperCase().replace(/_/g,' ')}</td>
+        <td style="color:var(--label)">L${e.level ?? '–'}</td>
+        <td style="font-variant-numeric:tabular-nums">${Math.round(e.rpmAtEvent ?? 0)}</td>
+        <td style="color:var(--sub)">${e.mode ?? '–'}</td>
+        <td style="color:var(--sub)">${e.initiatedBy ?? '–'}</td>
+        <td style="color:var(--sub);font-size:10px">${e.triggerReason ?? '–'}</td>
+      </tr>`;
+    }).join('');
+  } catch {}
 }
 
 // ─── Controls ─────────────────────────────────────────────────────────────────
 async function doActivate(level) {
+  const body = level !== undefined
+    ? { level, initiatedBy: 'dashboard' }
+    : { initiatedBy: 'dashboard' };
   await apiFetch('/api/activate', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(level !== undefined ? { level, initiatedBy: 'dashboard' } : { initiatedBy: 'dashboard' }),
+    body: JSON.stringify(body),
   }).catch(() => {});
   refresh();
 }
@@ -671,20 +1114,25 @@ function connectWS() {
 
   ws.onopen = () => {
     wsRetryMs = 2000;
-    document.getElementById('ws-dot').className = 'live';
-    document.getElementById('ws-label').textContent = 'live';
+    document.getElementById('ws-dot').textContent = '●';
+    document.getElementById('ws-dot').className   = 'live';
+    document.getElementById('ws-label').textContent = 'LIVE';
+    document.getElementById('ws-label').className   = 'live';
   };
 
-  ws.onmessage = (e) => {
+  ws.onmessage = (ev) => {
     try {
-      const msg = JSON.parse(e.data);
+      const msg = JSON.parse(ev.data);
       if (msg.type === 'rpm_update') {
-        rpmHistory.push({ timestamp: msg.data.updatedAt, rpm: msg.data.global ?? 0 });
+        const rpm = msg.data.global ?? 0;
+        rpmHistory.push({ timestamp: msg.data.updatedAt, rpm });
         if (rpmHistory.length > 360) rpmHistory.shift();
-        document.getElementById('rpm-value').textContent = Math.round(msg.data.global ?? 0);
-        const t3 = config?.activation?.level3_threshold ?? null;
-        const maxRpm = Math.max(msg.data.global ?? 0, ...rpmHistory.map(h => h.rpm), 1);
-        drawChart(maxRpm, config?.activation?.level1_threshold ?? null, config?.activation?.level2_threshold ?? null, t3);
+        animateCounter('kpi-rpm', Math.round(rpm));
+        updateChart(
+          config?.activation?.level1_threshold,
+          config?.activation?.level2_threshold,
+          config?.activation?.level3_threshold
+        );
       } else if (msg.type === 'activation_change') {
         renderStatus(msg.data);
       }
@@ -692,8 +1140,10 @@ function connectWS() {
   };
 
   ws.onclose = () => {
-    document.getElementById('ws-dot').className = '';
-    document.getElementById('ws-label').textContent = 'reconnecting…';
+    document.getElementById('ws-dot').textContent = '○';
+    document.getElementById('ws-dot').className   = '';
+    document.getElementById('ws-label').textContent = 'OFFLINE';
+    document.getElementById('ws-label').className   = '';
     setTimeout(connectWS, wsRetryMs);
     wsRetryMs = Math.min(wsRetryMs * 1.5, 30000);
   };
@@ -703,17 +1153,7 @@ function connectWS() {
 refresh();
 setInterval(refresh, 5000);
 connectWS();
-
-// Redraw chart on resize
-window.addEventListener('resize', () => {
-  if (rpmHistory.length) {
-    const t1 = config?.activation?.level1_threshold ?? null;
-    const t2 = config?.activation?.level2_threshold ?? null;
-    const t3 = config?.activation?.level3_threshold ?? null;
-    const maxRpm = Math.max(...rpmHistory.map(h => h.rpm), 1);
-    drawChart(maxRpm, t1, t2, t3);
-  }
-});
 </script>
+
 </body>
 </html>
