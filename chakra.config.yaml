@@ -1,0 +1,17 @@
+mode: manual
+
+dashboard:
+  port: 4242
+  enabled: true
+
+rpm_engine:
+  update_interval_seconds: 5
+  smoothing_window: 3
+
+weight_engine:
+  serve_fully_threshold: 65
+  serve_limited_threshold: 40
+
+ring_mapper:
+  source: annotations
+  unmatched_endpoint_handling: default-block
