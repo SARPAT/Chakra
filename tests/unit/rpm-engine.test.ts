@@ -186,8 +186,8 @@ describe('RPM formula', () => {
   });
 
   it('produces higher RPM with elevated error rate', () => {
-    vi.advanceTimersByTime(2 * 60 * 60 * 1000 + 1000);
     const engine = createEngine();
+    vi.advanceTimersByTime(2 * 60 * 60 * 1000 + 1000);
     engine.start();
 
     // Record 100 requests: 10 errors = 10% error rate (10x baseline of 1%)
