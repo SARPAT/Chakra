@@ -513,40 +513,46 @@ describe('Scenario 10 — unmatched endpoint', () => {
 });
 
 // ─── Performance check ────────────────────────────────────────────────────────
+//
+// Measures the CHAKRA hot-path overhead in isolation by calling
+// dispatcher.dispatch() directly (not via HTTP). This eliminates
+// Node.js HTTP stack / supertest overhead and gives a true reading of
+// CHAKRA's added latency per request.
 
 describe('Performance — hot path latency budget', () => {
-  const ITERATIONS = 20;
+  const ITERATIONS = 1000;
 
-  async function measureAvgLatency(fn: () => Promise<void>): Promise<number> {
+  function measureDispatchAvgMs(active: boolean): number {
+    const dispatcher = (instance as any).dispatcher;
     const latencies: number[] = [];
+
     for (let i = 0; i < ITERATIONS; i++) {
-      const t0 = Date.now();
-      await fn();
-      latencies.push(Date.now() - t0);
+      const t0 = performance.now();
+      dispatcher.dispatch('POST', '/api/payment/process', undefined);
+      latencies.push(performance.now() - t0);
     }
-    // Drop top 2 outliers before averaging
+
+    // Drop top 5% outliers before averaging
     latencies.sort((a, b) => a - b);
-    const trimmed = latencies.slice(0, -2);
-    return trimmed.reduce((s, v) => s + v, 0) / trimmed.length;
+    const trimmed = latencies.slice(0, Math.floor(ITERATIONS * 0.95));
+    const avg = trimmed.reduce((s, v) => s + v, 0) / trimmed.length;
+    console.log(`[Perf] ${active ? 'Active' : 'Sleeping'} dispatch avg: ${avg.toFixed(4)}ms`);
+    return avg;
   }
 
-  it('sleeping mode adds under 1ms average latency', async () => {
+  it('sleeping mode: dispatcher.dispatch() under 0.1ms per call', () => {
     expect(instance.status().active).toBe(false);
-    const avg = await measureAvgLatency(() =>
-      request(app).post('/api/checkout').then(() => {}),
-    );
-    console.log(`[Perf] Sleeping mode avg latency: ${avg.toFixed(2)}ms`);
-    expect(avg).toBeLessThan(1);
+    const avg = measureDispatchAvgMs(false);
+    // Spec: < 0.1ms when sleeping (single boolean check + return)
+    expect(avg).toBeLessThan(0.1);
   });
 
-  it('active + SERVE_FULLY adds under 3ms average latency', async () => {
+  it('active + SERVE_FULLY: dispatcher.dispatch() under 2ms per call', () => {
     instance.activate(1, 'integration-test');
-    // At level 1: payment-block never suspended
-    const avg = await measureAvgLatency(() =>
-      request(app).post('/api/payment/process').then(() => {}),
-    );
-    console.log(`[Perf] Active SERVE_FULLY avg latency: ${avg.toFixed(2)}ms`);
-    expect(avg).toBeLessThan(3);
+    // payment-block (minLevel=0) is never suspended — goes through SERVE_FULLY path
+    const avg = measureDispatchAvgMs(true);
+    // Spec: < 2ms total when active
+    expect(avg).toBeLessThan(2);
   });
 });
 
