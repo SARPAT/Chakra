@@ -377,20 +377,24 @@ describe('Scenario 7 — Policy Engine override', () => {
     instance.activate(3, 'integration-test');
     (instance as any).dispatcher.resetMetrics();
 
+    // Use a tier not in the default tier config so tier signal = 0 and weight engine
+    // does NOT rescue the request (weight < 65). This forces the request into the
+    // policy engine evaluation path, which is what increments policyOverrides.
+    //   weight = 30(base) + 0(GET) + 10(auth proxy) + 0(depth) + 0(cart) + 0(tier) = 40
     setPolicyRules(instance, [
       {
-        name: 'premium-serve-fully',
+        name: 'vip-serve-fully',
         priority: 100,
-        if: { user_tier: 'premium' },
+        if: { user_tier: 'vip-test' },
         then: { action: 'serve_fully' },
       },
     ]);
 
-    const SESSION_ID = 'premium-metrics-session';
+    const SESSION_ID = 'vip-metrics-session';
     injectSession(
       instance,
       SESSION_ID,
-      makeSession({ userTier: 'premium', callCount: 1, lastSeenTime: Date.now() }),
+      makeSession({ userTier: 'vip-test', callCount: 1, lastSeenTime: Date.now() }),
     );
 
     await request(app)
