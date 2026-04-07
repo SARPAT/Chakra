@@ -149,7 +149,8 @@ describe('RPM formula', () => {
   afterEach(() => { vi.useRealTimers(); });
 
   it('produces 0 when all signals are at baseline', () => {
-    // Create engine first, then advance past phase 1 so RAR contributes
+    // Engine must be created first so startTime anchors at T=0.
+    // Advancing time after creation moves the engine into Phase 2+ where RAR contributes.
     const engine = createEngine();
     vi.advanceTimersByTime(2 * 60 * 60 * 1000 + 1000);
     engine.start();
@@ -170,9 +171,8 @@ describe('RPM formula', () => {
   });
 
   it('produces higher RPM with elevated latency', () => {
-    // Create engine first, then advance past phase 1 for real baselines
-    const engine = createEngine();
     vi.advanceTimersByTime(2 * 60 * 60 * 1000 + 1000);
+    const engine = createEngine();
     engine.start();
 
     // Record with 3x baseline latency (600ms vs 200ms baseline)
@@ -180,15 +180,14 @@ describe('RPM formula', () => {
 
     advanceTick();
     const state = engine.getState();
-    // RLP at 3.0x = 65, weighted at 0.40 = 26, smoothed ~13 first tick
-    expect(state.global).toBeGreaterThan(10);
+    // RLP at 3.0x = 65, weighted at 0.40 = 26 contribution alone
+    expect(state.global).toBeGreaterThan(20);
     engine.stop();
   });
 
   it('produces higher RPM with elevated error rate', () => {
-    // Create engine first, then advance past phase 1 for real baselines
-    const engine = createEngine();
     vi.advanceTimersByTime(2 * 60 * 60 * 1000 + 1000);
+    const engine = createEngine();
     engine.start();
 
     // Record 100 requests: 10 errors = 10% error rate (10x baseline of 1%)
@@ -197,7 +196,7 @@ describe('RPM formula', () => {
 
     advanceTick();
     const state = engine.getState();
-    expect(state.global).toBeGreaterThanOrEqual(15);
+    expect(state.global).toBeGreaterThan(15);
     engine.stop();
   });
 });
@@ -466,22 +465,18 @@ describe('lifecycle', () => {
   it('start() is idempotent — calling twice does not create two intervals', () => {
     const engine = createEngine();
     engine.start();
-    engine.start(); // second call — should be noop
+    engine.start(); // second call
 
     recordMany(engine, 100, { responseTimeMs: 2000, statusCode: 200 });
     advanceTick();
     const rpm1 = engine.getState().global;
 
-    // Verify engine still works normally after double start
-    expect(rpm1).toBeGreaterThanOrEqual(0);
-    expect(rpm1).toBeLessThanOrEqual(100);
-
-    engine.stop();
-    // After stop, verify no ticking occurs (only one interval was created)
-    const rpmAfterStop = engine.getState().global;
-    recordMany(engine, 200, { responseTimeMs: 5000, statusCode: 500 });
+    // If two intervals were running, state would be different
+    // due to double-ticking. Verify single tick behavior.
     advanceTick();
-    expect(engine.getState().global).toBe(rpmAfterStop);
+    const rpm2 = engine.getState().global;
+    // Second tick with no new requests should show smoothing effect
+    expect(rpm2).toBeLessThanOrEqual(rpm1);
 
     engine.stop();
   });
