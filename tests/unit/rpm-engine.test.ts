@@ -180,8 +180,8 @@ describe('RPM formula', () => {
 
     advanceTick();
     const state = engine.getState();
-    // RLP at 3.0x = 65, weighted at 0.40 = 26 contribution alone
-    expect(state.global).toBeGreaterThan(20);
+    // RLP at 3.0x = 65, weighted at 0.40 = 26, smoothed ~13 first tick
+    expect(state.global).toBeGreaterThan(10);
     engine.stop();
   });
 
