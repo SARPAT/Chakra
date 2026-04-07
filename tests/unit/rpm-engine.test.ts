@@ -171,8 +171,8 @@ describe('RPM formula', () => {
   });
 
   it('produces higher RPM with elevated latency', () => {
-    vi.advanceTimersByTime(2 * 60 * 60 * 1000 + 1000);
     const engine = createEngine();
+    vi.advanceTimersByTime(2 * 60 * 60 * 1000 + 1000);
     engine.start();
 
     // Record with 3x baseline latency (600ms vs 200ms baseline)
