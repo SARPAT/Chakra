@@ -1,0 +1,45 @@
+mode: auto
+
+activate_when:
+  rpm_threshold: 60
+  sustained_seconds: 10
+  error_rate_above: 3.0
+
+deactivate_when:
+  rpm_below: 40
+  sustained_seconds: 20
+
+restore_sequence: gradual
+restore_step_wait_seconds: 10
+
+dashboard:
+  port: 4242
+  enabled: true
+
+rpm_engine:
+  update_interval_seconds: 5
+  smoothing_window: 3
+
+weight_engine:
+  serve_fully_threshold: 65
+  serve_limited_threshold: 40
+
+user_tier:
+  header: X-User-Tier
+  tiers:
+    standard: 0
+    premium: 40
+
+always_protect:
+  - /api/payment
+  - /api/checkout
+  - /api/auth
+
+degrade_first:
+  - /api/recommendations
+
+user_overrides:
+  premium_users:
+    header: X-User-Tier
+    value: premium
+    treatment: always_level_0
