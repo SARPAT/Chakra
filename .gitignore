@@ -8,3 +8,4 @@ coverage/
 *.sqlite3
 *.db
 .claude/
+demo/node_modules/
