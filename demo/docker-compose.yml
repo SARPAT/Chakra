@@ -1,0 +1,28 @@
+services:
+  demo-app:
+    build:
+      context: ..
+      dockerfile: demo/Dockerfile
+    ports:
+      - "3000:3000"
+      - "4242:4242"
+    environment:
+      - NODE_ENV=demo
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/products"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  load-generator:
+    image: node:20-alpine
+    depends_on:
+      demo-app:
+        condition: service_healthy
+    working_dir: /app/demo
+    volumes:
+      - ..:/app
+    command: >
+      sh -c "cd /app/demo && npm install --production 2>/dev/null && sleep 5 && node surge.js"
+    environment:
+      - DEMO_URL=http://demo-app:3000
