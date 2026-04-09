@@ -307,11 +307,20 @@ export class ChakraInstance {
     const levelMap = this.ringMapper.getLevelMap();
     if (level < 0 || level >= levelMap.length) return [];
 
+    const minLevels = this.ringMapper.getBlockMinLevels();
     const allBlocks = [
       ...levelMap[level].activeBlocks,
       ...levelMap[level].suspendedBlocks,
     ];
-    return allBlocks.map(b => ({ ...this.ringMapper.getBlockState(b, level) }));
+    return allBlocks.map(b => {
+      const state = { ...this.ringMapper.getBlockState(b, level) };
+      return {
+        ...state,
+        name: state.block,
+        minLevel: minLevels.get(state.block) ?? 0,
+        suspended: state.isSuspended,
+      };
+    });
   }
 
   // ─── Config management ─────────────────────────────────────────────────────
