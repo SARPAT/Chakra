@@ -463,22 +463,25 @@ describe('lifecycle', () => {
   });
 
   it('start() is idempotent — calling twice does not create two intervals', () => {
-    const engine = createEngine();
-    engine.start();
-    engine.start(); // second call
+    // Engine with double start()
+    const doubleEngine = createEngine();
+    doubleEngine.start();
+    doubleEngine.start(); // second call — should be no-op
 
-    recordMany(engine, 100, { responseTimeMs: 2000, statusCode: 200 });
+    // Engine with single start()
+    const singleEngine = createEngine();
+    singleEngine.start();
+
+    // Feed identical data to both
+    recordMany(doubleEngine, 100, { responseTimeMs: 2000, statusCode: 200 });
+    recordMany(singleEngine, 100, { responseTimeMs: 2000, statusCode: 200 });
     advanceTick();
-    const rpm1 = engine.getState().global;
 
-    // If two intervals were running, state would be different
-    // due to double-ticking. Verify single tick behavior.
-    advanceTick();
-    const rpm2 = engine.getState().global;
-    // Second tick with no new requests should show smoothing effect
-    expect(rpm2).toBeLessThanOrEqual(rpm1);
+    // If two intervals were running, double-ticking would produce a different score
+    expect(doubleEngine.getState().global).toBe(singleEngine.getState().global);
 
-    engine.stop();
+    doubleEngine.stop();
+    singleEngine.stop();
   });
 
   it('stop() halts ticking', () => {
