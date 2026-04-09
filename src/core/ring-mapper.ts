@@ -219,6 +219,15 @@ export class RingMapper {
     return this.currentMap.levelMap;
   }
 
+  /** Get minLevel for every registered block. Used by dashboard to show block priority. */
+  getBlockMinLevels(): ReadonlyMap<string, number> {
+    const result = new Map<string, number>();
+    for (const [name, def] of this.currentRegistrySnapshot) {
+      result.set(name, def.minLevel);
+    }
+    return result;
+  }
+
   /** Get suspension config for a block. Reads from compiled snapshot for concurrency safety. */
   getSuspendedBlockConfig(blockName: string): Readonly<SuspendedBlockConfig> | undefined {
     return this.currentMap.suspendedConfigs.get(blockName);
