@@ -332,10 +332,11 @@ export class RPMEngine {
   }
 
   private computeRAR(entries: RingBufferEntry[], phase: 1 | 2 | 3): number {
-    // Phase 1: RAR forced to 0 (treat current rate as baseline)
-    if (phase === 1) return 0;
-
-    const baseline = this.config.requestRateBaseline;
+    // Use external baseline, or auto-learned baseline, or skip if neither available
+    let baseline = this.config.requestRateBaseline;
+    if (baseline <= 0 && this.autoBaseline) {
+      baseline = this.autoBaseline.requestRate;
+    }
     if (baseline <= 0) return 0;
 
     // Calculate current request rate (requests per minute)
