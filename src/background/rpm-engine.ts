@@ -66,6 +66,11 @@ const UPDATE_INTERVAL_MS = 5_000;
 const COLD_START_LATENCY_BASELINE = 500;  // ms
 const COLD_START_ERROR_BASELINE = 2;      // percent
 
+// Auto-baseline warmup: after this many ms of data, compute baselines from observed traffic
+const AUTO_BASELINE_WARMUP_MS = 30_000;   // 30 seconds
+// Minimum samples required before auto-baseline is considered reliable
+const AUTO_BASELINE_MIN_SAMPLES = 50;
+
 // Phase boundaries (ms)
 const PHASE_2_THRESHOLD = 2 * 60 * 60 * 1000;  // 2 hours
 const PHASE_3_THRESHOLD = 24 * 60 * 60 * 1000;  // 24 hours
@@ -157,6 +162,10 @@ export class RPMEngine {
   private history: [number, number, number] = [0, 0, 0];
   private readonly config: BaselineConfig;
   private readonly startTime: number;
+
+  // Auto-baseline: learned from observed traffic during warmup
+  private autoBaseline: { requestRate: number; latencyP95: number; errorRate: number } | null = null;
+  private autoBaselineComputed = false;
 
   constructor(config?: Partial<BaselineConfig>) {
     this.config = { ...DEFAULT_BASELINE, ...config };
