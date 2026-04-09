@@ -227,6 +227,10 @@ export class RPMEngine {
 
   private tick(): void {
     try {
+      // Attempt auto-baseline calibration during warmup period
+      if (!this.autoBaselineComputed) {
+        this.tryComputeAutoBaseline();
+      }
       const newState = this.calculate();
       this.state = Object.freeze(newState);
     } catch {
@@ -274,6 +278,47 @@ export class RPMEngine {
       updatedAt: now,
       phase,
     };
+  }
+
+  /**
+   * Auto-compute baselines from observed traffic after warmup period.
+   * Called on each tick until baselines are established.
+   */
+  private tryComputeAutoBaseline(): void {
+    const elapsed = Date.now() - this.startTime;
+    if (elapsed < AUTO_BASELINE_WARMUP_MS) return;
+
+    const now = Date.now();
+    const { all: entries } = this.collector.getWindowPartitioned(now - WINDOW_MS);
+    if (entries.length < AUTO_BASELINE_MIN_SAMPLES) return;
+
+    // Compute request rate baseline (requests per minute)
+    let minTs = Infinity;
+    let maxTs = -Infinity;
+    for (const e of entries) {
+      if (e.timestamp < minTs) minTs = e.timestamp;
+      if (e.timestamp > maxTs) maxTs = e.timestamp;
+    }
+    const durationMs = maxTs - minTs;
+    const requestRate = durationMs > 1000
+      ? entries.length / (durationMs / 60_000)
+      : entries.length * 12; // estimate from count if window too small
+
+    // Compute P95 latency baseline
+    const times = entries.map(e => e.responseTimeMs).sort((a, b) => a - b);
+    const p95Idx = Math.ceil(0.95 * times.length) - 1;
+    const latencyP95 = times[p95Idx];
+
+    // Compute error rate baseline
+    const errorCount = entries.filter(e => e.statusCode >= 400).length;
+    const errorRate = (errorCount / entries.length) * 100;
+
+    this.autoBaseline = {
+      requestRate: Math.max(requestRate, 1),
+      latencyP95: Math.max(latencyP95, 1),
+      errorRate: Math.max(errorRate, 0.5), // minimum 0.5% to avoid zero-division amplification
+    };
+    this.autoBaselineComputed = true;
   }
 
   private computeRPMFromEntries(entries: RingBufferEntry[], phase: 1 | 2 | 3): number {
