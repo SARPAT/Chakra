@@ -391,9 +391,12 @@ export class RPMEngine {
   }
 
   private computeERD(entries: RingBufferEntry[], phase: 1 | 2 | 3): number {
-    // Get effective baseline: phase 1 uses cold start default
+    // Get effective baseline: external config → auto-learned → cold start default
     let baseline = this.config.errorRateBaseline;
-    if (phase === 1 || baseline <= 0) {
+    if (baseline <= 0 && this.autoBaseline) {
+      baseline = this.autoBaseline.errorRate;
+    }
+    if (baseline <= 0) {
       baseline = COLD_START_ERROR_BASELINE;
     }
 
