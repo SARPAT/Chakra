@@ -67,7 +67,7 @@ const COLD_START_LATENCY_BASELINE = 500;  // ms
 const COLD_START_ERROR_BASELINE = 2;      // percent
 
 // Auto-baseline warmup: after this many ms of data, compute baselines from observed traffic
-const AUTO_BASELINE_WARMUP_MS = 30_000;   // 30 seconds
+const AUTO_BASELINE_WARMUP_MS = 10_000;   // 10 seconds — learn baseline quickly from initial traffic
 // Minimum samples required before auto-baseline is considered reliable
 const AUTO_BASELINE_MIN_SAMPLES = 50;
 
