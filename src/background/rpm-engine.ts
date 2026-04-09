@@ -366,9 +366,12 @@ export class RPMEngine {
   }
 
   private computeRLP(entries: RingBufferEntry[], phase: 1 | 2 | 3): number {
-    // Get effective baseline: phase 1 uses cold start default
+    // Get effective baseline: external config → auto-learned → cold start default
     let baseline = this.config.latencyP95Baseline;
-    if (phase === 1 || baseline <= 0) {
+    if (baseline <= 0 && this.autoBaseline) {
+      baseline = this.autoBaseline.latencyP95;
+    }
+    if (baseline <= 0) {
       baseline = COLD_START_LATENCY_BASELINE;
     }
 
