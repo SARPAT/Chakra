@@ -57,14 +57,14 @@ export class DashboardServer {
     this.httpServer = http.createServer(app);
     this.wss = this.buildWebSocketServer(this.httpServer);
 
-    this.httpServer.listen(this.port, () => {
-      logger.info(`Dashboard available at http://localhost:${this.port}`);
-    });
-
     this.httpServer.on('error', (err: NodeJS.ErrnoException) => {
       if (err.code === 'EADDRINUSE') {
         logger.warn(`Dashboard port ${this.port} already in use — dashboard disabled.`);
       }
+    });
+
+    this.httpServer.listen(this.port, () => {
+      logger.info(`Dashboard available at http://localhost:${this.port}`);
     });
   }
 
