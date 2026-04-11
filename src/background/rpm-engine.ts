@@ -324,14 +324,14 @@ export class RPMEngine {
   private computeRPMFromEntries(entries: RingBufferEntry[], phase: 1 | 2 | 3): number {
     if (entries.length === 0) return 0;
 
-    const rarScore = this.computeRAR(entries, phase);
-    const rlpScore = this.computeRLP(entries, phase);
-    const erdScore = this.computeERD(entries, phase);
+    const rarScore = this.computeRAR(entries);
+    const rlpScore = this.computeRLP(entries);
+    const erdScore = this.computeERD(entries);
 
     return rarScore * WEIGHT_RAR + rlpScore * WEIGHT_RLP + erdScore * WEIGHT_ERD;
   }
 
-  private computeRAR(entries: RingBufferEntry[], phase: 1 | 2 | 3): number {
+  private computeRAR(entries: RingBufferEntry[]): number {
     // Use external baseline, or auto-learned baseline, or skip if neither available
     let baseline = this.config.requestRateBaseline;
     if (baseline <= 0 && this.autoBaseline) {
@@ -365,7 +365,7 @@ export class RPMEngine {
     return normalizeRAR(ratio);
   }
 
-  private computeRLP(entries: RingBufferEntry[], phase: 1 | 2 | 3): number {
+  private computeRLP(entries: RingBufferEntry[]): number {
     // Get effective baseline: external config → auto-learned → cold start default
     let baseline = this.config.latencyP95Baseline;
     if (baseline <= 0 && this.autoBaseline) {
@@ -390,7 +390,7 @@ export class RPMEngine {
     return normalizeRLP(ratio);
   }
 
-  private computeERD(entries: RingBufferEntry[], phase: 1 | 2 | 3): number {
+  private computeERD(entries: RingBufferEntry[]): number {
     // Get effective baseline: external config → auto-learned → cold start default
     let baseline = this.config.errorRateBaseline;
     if (baseline <= 0 && this.autoBaseline) {
