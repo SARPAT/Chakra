@@ -246,7 +246,7 @@ export class RPMEngine {
     const { all: window, byBlock } = this.collector.getWindowPartitioned(now - WINDOW_MS);
 
     // Compute global RPM
-    const globalRaw = this.computeRPMFromEntries(window, phase);
+    const globalRaw = this.computeRPMFromEntries(window);
 
     // Apply smoothing
     this.history[0] = this.history[1];
@@ -265,7 +265,7 @@ export class RPMEngine {
     // will be added when Shadow Mode provides per-block baselines.
     const perBlock: Record<string, number> = {};
     for (const [block, blockEntries] of byBlock) {
-      const raw = Math.round(this.computeRPMFromEntries(blockEntries, phase));
+      const raw = Math.round(this.computeRPMFromEntries(blockEntries));
       perBlock[block] = Math.max(0, Math.min(100, raw));
     }
 
@@ -321,7 +321,7 @@ export class RPMEngine {
     this.autoBaselineComputed = true;
   }
 
-  private computeRPMFromEntries(entries: RingBufferEntry[], phase: 1 | 2 | 3): number {
+  private computeRPMFromEntries(entries: RingBufferEntry[]): number {
     if (entries.length === 0) return 0;
 
     const rarScore = this.computeRAR(entries);
