@@ -147,32 +147,32 @@ export class DashboardServer {
 
   // ─── Route handlers ─────────────────────────────────────────────────────────
 
-  private handleGetStatus(req: Request, res: Response): void {
+  private handleGetStatus(_req: Request, res: Response): void {
     try { res.json(this.api.status()); }
     catch (err) { this.internalError(res, err); }
   }
 
-  private handleGetRPM(req: Request, res: Response): void {
+  private handleGetRPM(_req: Request, res: Response): void {
     try { res.json(this.api.rpm()); }
     catch (err) { this.internalError(res, err); }
   }
 
-  private handleGetBlocks(req: Request, res: Response): void {
+  private handleGetBlocks(_req: Request, res: Response): void {
     try { res.json(this.api.blocks()); }
     catch (err) { this.internalError(res, err); }
   }
 
-  private handleGetPolicies(req: Request, res: Response): void {
+  private handleGetPolicies(_req: Request, res: Response): void {
     try { res.json(this.api.getPolicies()); }
     catch (err) { this.internalError(res, err); }
   }
 
-  private handleGetLearning(req: Request, res: Response): void {
+  private handleGetLearning(_req: Request, res: Response): void {
     try { res.json(this.api.learning()); }
     catch (err) { this.internalError(res, err); }
   }
 
-  private handleGetHistory(req: Request, res: Response): void {
+  private handleGetHistory(_req: Request, res: Response): void {
     try { res.json(this.api.history()); }
     catch (err) { this.internalError(res, err); }
   }
@@ -185,7 +185,7 @@ export class DashboardServer {
     } catch (err) { this.internalError(res, err); }
   }
 
-  private handleGetConfig(req: Request, res: Response): void {
+  private handleGetConfig(_req: Request, res: Response): void {
     try { res.json(this.api.getConfig()); }
     catch (err) { this.internalError(res, err); }
   }
