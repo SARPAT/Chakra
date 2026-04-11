@@ -88,11 +88,6 @@ export class ActivationController {
   // Gradual restore state
   private restorationInterval: ReturnType<typeof setInterval> | null = null;
   private restorationPaused = false;
-  private restorationTargetLevel = 0;   // always 0 (full restoration)
-
-  // Activation start time (for duration calculation)
-  private activatedAt: number | null = null;
-
   constructor(config: ActivationControllerConfig) {
     this.dispatcher = config.dispatcher;
     this.rpmEngine = config.rpmEngine;
@@ -150,7 +145,6 @@ export class ActivationController {
 
     this.cancelRestoration();
     this.dispatcher.setActivationState({ active: true, currentLevel: clamped });
-    this.activatedAt = Date.now();
 
     this.appendLog({
       kind: 'activated',
@@ -182,9 +176,8 @@ export class ActivationController {
     if (resolvedSequence === 'immediate') {
       this.dispatcher.setActivationState({ active: false, currentLevel: 0 });
       this.appendLog({ kind: 'fully_restored', level: 0 });
-      this.activatedAt = null;
     } else {
-      this.startGradualRestore(activation.currentLevel);
+      this.startGradualRestore();
     }
   }
 
@@ -232,13 +225,11 @@ export class ActivationController {
 
   // ─── Gradual restore ───────────────────────────────────────────────────────
 
-  private startGradualRestore(fromLevel: number): void {
+  private startGradualRestore(): void {
     this.cancelRestoration();
     this.restorationPaused = false;
-    this.restorationTargetLevel = 0;
 
     // We step down one level every restoreStepIntervalMs
-    // Starting at fromLevel and going toward 0
     this.restorationInterval = setInterval(() => {
       try { this.gradualRestoreStep(); } catch { /* never propagate */ }
     }, this.restoreStepIntervalMs);
@@ -288,7 +279,6 @@ export class ActivationController {
       this.dispatcher.setActivationState({ active: false, currentLevel: 0 });
       this.appendLog({ kind: 'fully_restored', level: 0 });
       this.cancelRestoration();
-      this.activatedAt = null;
     } else {
       // Step down one level
       this.dispatcher.setActivationState({ active: true, currentLevel: nextLevel });
