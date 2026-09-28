@@ -1,6 +1,6 @@
 // Tests for the dry-run reporter (JSON lines, filtering, rate limiting, summary, report).
 
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   DRY_RUN_MAX_ROUTE_KEYS,
   DRY_RUN_OVERFLOW_ROUTE,
@@ -27,7 +27,9 @@ function setup(opts: Omit<DryRunReporterOptions, 'log' | 'now'> = {}) {
   const clock = { t: 0 };
   const reporter = createDryRunReporter({
     ...opts,
-    log: (line) => { lines.push(line); },
+    log: (line) => {
+      lines.push(line);
+    },
     now: () => clock.t,
   });
   const parsed = () => lines.map((l) => JSON.parse(l) as Record<string, unknown>);
@@ -38,12 +40,14 @@ describe('createDryRunReporter', () => {
   describe('log lines', () => {
     it('logs one structured JSON line for a would-shed event', () => {
       const { reporter, lines } = setup();
-      reporter.emit(admission({
-        route: 'GET /users/:id',
-        reason: 'limit_exceeded',
-        limit: 40,
-        inFlight: 41,
-      }));
+      reporter.emit(
+        admission({
+          route: 'GET /users/:id',
+          reason: 'limit_exceeded',
+          limit: 40,
+          inFlight: 41,
+        }),
+      );
 
       expect(lines).toHaveLength(1);
       expect(lines[0]).not.toContain('\n');
@@ -123,7 +127,12 @@ describe('createDryRunReporter', () => {
       for (let i = 0; i < 10; i++) reporter.emit(admission());
 
       expect(lines).toHaveLength(3);
-      expect(reporter.stats()).toEqual({ wouldShed: 10, wouldDegrade: 0, suppressed: 7, logged: 3 });
+      expect(reporter.stats()).toEqual({
+        wouldShed: 10,
+        wouldDegrade: 0,
+        suppressed: 7,
+        logged: 3,
+      });
     });
 
     it('defaults to 10 lines per 10s window', () => {
@@ -237,7 +246,9 @@ describe('createDryRunReporter', () => {
 
   describe('safety', () => {
     it('swallows a throwing logger and keeps counting', () => {
-      const log = vi.fn(() => { throw new Error('disk full'); });
+      const log = vi.fn(() => {
+        throw new Error('disk full');
+      });
       const reporter = createDryRunReporter({ log, maxLogsPerInterval: 1, now: () => 0 });
 
       expect(() => reporter.emit(admission())).not.toThrow();
