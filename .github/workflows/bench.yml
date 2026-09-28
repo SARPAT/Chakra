@@ -1,0 +1,44 @@
+name: Benchmark
+
+on:
+  workflow_dispatch:
+    inputs:
+      only:
+        description: 'Benchmarks to run (comma-separated: micro, overhead, overload)'
+        default: 'micro,overhead,overload'
+
+permissions:
+  contents: read
+
+jobs:
+  bench:
+    name: Benchmark
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            bench/package-lock.json
+
+      - run: npm ci
+
+      - name: Run benchmarks
+        env:
+          BENCH_ONLY: ${{ inputs.only }}
+        run: npm run bench
+
+      - name: Publish results to the job summary
+        run: cat bench/RESULTS.md >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bench-results
+          path: |
+            bench/RESULTS.md
+            bench/results.json
