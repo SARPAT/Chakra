@@ -1,600 +1,106 @@
-// CHAKRA Middleware — Entry point and public API
+// CHAKRA — priority-aware adaptive load shedding for Node.js.
+// Design: docs/adr/0001-adaptive-admission-control.md
 //
-// Usage (Express):
-//   const { chakra } = require('chakra-middleware');
-//   const chakraInstance = chakra('./chakra.config.yaml');
-//   app.use(chakraInstance.middleware());
-//   app.post('/api/payment', chakraInstance.block('payment-block'), handler);
+//   import { chakra } from 'chakra-middleware';
+//   const c = chakra({ routes: { 'POST /checkout': 'critical', 'GET /recommendations': 'sheddable' } });
+//   app.get('/metrics', c.metricsHandler);
+//
+// The Express/Fastify adapters, adaptive limiter and Prometheus exporter are wired in
+// here as their modules land; until then the stand-ins in src/core/defaults.ts are used.
 
-import type { Request, Response, NextFunction, RequestHandler } from 'express';
-import type { BlockState, DispatcherMetrics, RPMState } from './types';
-import { RingMapper } from './core/ring-mapper';
-import { Dispatcher } from './core/dispatcher';
-import { WeightEngine } from './core/weight-engine';
-import { PolicyEngine } from './core/policy-engine';
-import { ActivationController } from './core/activation';
-import RPMEngine from './background/rpm-engine';
-import { loadConfig, type ChakraConfig } from './config/loader';
-import { createExpressMiddleware, createRPMRecorder, createShadowObserverMiddleware } from './integrations/express';
-import { SessionCache } from './background/session-cache';
-import { ShadowModeObserver } from './background/shadow-mode/observer';
-import { ShadowModeAnalyser } from './background/shadow-mode/analyser';
-import { ShadowModeSuggester } from './background/shadow-mode/suggester';
-import { WebhookAdapter } from './integrations/container-bridge/webhook';
-import { KubernetesAdapter } from './integrations/container-bridge/kubernetes';
-import { PrometheusAdapter } from './integrations/container-bridge/prometheus';
-import { ECSAdapter } from './integrations/container-bridge/ecs';
-import { AdapterManager } from './integrations/container-bridge/adapter-manager';
-import { DashboardAPI } from './dashboard/api';
-import { DashboardServer } from './dashboard/server';
-import { logger, printStartupBanner } from './utils/logger';
+import type { IncomingMessage, ServerResponse } from 'node:http';
 import {
-  DEFAULT_WEIGHT_HIGH,
-  DEFAULT_WEIGHT_LOW,
-  DEFAULT_DASHBOARD_PORT,
-  DEFAULT_RPM_INTERVAL_SECONDS,
-} from './config/defaults';
+  NOOP_SINK,
+  type ChakraEventSink,
+  type Limiter,
+  type LimiterSnapshot,
+  type MetricsExporter,
+} from './types';
+import { resolveOptions, type ChakraOptions, type ResolvedOptions } from './config/schema';
+import { createAdmissionCore, type ControllableAdmissionCore } from './core/admission';
+import { admitAllLimiter, exactRouteResolver } from './core/defaults';
 
-// ─── Public API types ─────────────────────────────────────────────────────────
-
-/** Current status snapshot returned by chakraInstance.status() */
-export interface ChakraStatus {
-  active: boolean;
-  mode: 'manual' | 'auto';
-  currentLevel: number;
-  rpm: number;
-  rpmPhase: 1 | 2 | 3;
-  disabled: boolean;
+export interface ChakraInstance extends ControllableAdmissionCore {
+  /** Options after defaults and `CHAKRA_MODE` are applied. */
+  readonly options: ResolvedOptions;
+  /** Current limiter state. */
+  snapshot(): LimiterSnapshot;
+  /** Prometheus scrape handler, usable as `app.get('/metrics', c.metricsHandler)`. */
+  metricsHandler(req: IncomingMessage, res: ServerResponse): void;
+  /** Stop background timers. Safe to call more than once. */
+  close(): void;
 }
-
-// ─── ChakraInstance ───────────────────────────────────────────────────────────
-
-export class ChakraInstance {
-  private readonly configPath: string;
-  private config: ChakraConfig;
-
-  // Core components
-  private readonly ringMapper: RingMapper;
-  private readonly weightEngine: WeightEngine;
-  private readonly policyEngine: PolicyEngine;
-  private readonly dispatcher: Dispatcher;
-  private readonly rpmEngine: RPMEngine;
-  private readonly sessionCache: SessionCache;
-  private readonly shadowObserver: ShadowModeObserver;
-  private readonly shadowAnalyser: ShadowModeAnalyser;
-  private readonly shadowSuggester: ShadowModeSuggester;
-  private readonly activationController: ActivationController;
-  private readonly adapterManager: AdapterManager;
-  private readonly dashboardAPI: DashboardAPI;
-  private readonly dashboardServer: DashboardServer;
-
-  // State
-  private disabled = false;
-  private registeredRoutes = new Set<string>();  // dedup for block() lazy registration
-
-  // RPM → PolicyEngine sync interval
-  private syncInterval: ReturnType<typeof setInterval> | null = null;
-
-  constructor(configPath: string) {
-    this.configPath = configPath;
-
-    // ── Step 1: Load config ──────────────────────────────────────────────────
-    let config: ChakraConfig = { mode: 'manual' };
-    try {
-      config = loadConfig(configPath);
-    } catch (err) {
-      logger.error(`Config error: ${err instanceof Error ? err.message : String(err)}`);
-      logger.error('CHAKRA disabled. App running without CHAKRA protection.');
-      this.disabled = true;
-    }
-    this.config = config;
-
-    // ── Step 2: Build Ring Map ───────────────────────────────────────────────
-    this.ringMapper = new RingMapper({
-      unmatchedEndpointHandling: config.ring_mapper?.unmatched_endpoint_handling ?? 'default-block',
-    });
-
-    // Register always_protect and degrade_first paths from config
-    this.applyProtectionConfig(config);
-
-    // ── Step 3: Build core components ───────────────────────────────────────
-    this.weightEngine = new WeightEngine({
-      tierConfig: config.weight_engine?.user_tier?.tiers,
-    });
-
-    this.policyEngine = new PolicyEngine({ rules: [] });
-
-    // Apply always_protect as PolicyEngine rules (serve_fully override for protected paths)
-    this.applyAlwaysProtectRules(config);
-
-    this.dispatcher = new Dispatcher({
-      ringMapper: this.ringMapper,
-      weightOverrideHigh: config.weight_engine?.serve_fully_threshold ?? DEFAULT_WEIGHT_HIGH,
-      weightOverrideLow: config.weight_engine?.serve_limited_threshold ?? DEFAULT_WEIGHT_LOW,
-      weightProvider: this.weightEngine,
-      policyProvider: this.policyEngine,
-      sessionProvider: { getSession: (hashedId: string) => this.sessionCache.get(hashedId) },
-    });
-
-    // ── Step 4: Session Cache + Shadow Mode ──────────────────────────────────
-    this.sessionCache = new SessionCache();
-
-    this.shadowObserver = new ShadowModeObserver({
-      sessionCache: this.sessionCache,
-    });
-
-    this.shadowAnalyser = new ShadowModeAnalyser(this.shadowObserver);
-    this.shadowSuggester = new ShadowModeSuggester(this.shadowAnalyser);
-
-    // ── Step 5: RPM Engine ───────────────────────────────────────────────────
-    this.rpmEngine = new RPMEngine();
-
-    // ── Step 5: Container Bridge ─────────────────────────────────────────────
-    this.adapterManager = this.buildAdapterManager(config);
-
-    // ── Step 6: Activation Controller ───────────────────────────────────────
-    this.activationController = new ActivationController({
-      dispatcher: this.dispatcher,
-      rpmEngine: this.rpmEngine,
-      chakraConfig: config,
-      adapterManager: this.adapterManager,
-    });
-
-    // ── Step 6: Dashboard ────────────────────────────────────────────────────
-    this.dashboardAPI = new DashboardAPI({
-      getStatus: () => this.status(),
-      getRPMState: () => this.rpmEngine.getState(),
-      getBlockStates: () => this.getBlockStates(),
-      getActivationLog: () => this.activationController.getLog(),
-      getMetrics: () => this.dispatcher.getMetrics(),
-      getConfig: () => this.config,
-      initialPolicies: [],
-      onPoliciesUpdated: (rules) => this.policyEngine.updateRules(rules),
-      activate: (level, initiatedBy) => this.activationController.activate(level, initiatedBy),
-      initiateSleep: (sequence, initiatedBy) =>
-        this.activationController.initiateSleep(sequence, initiatedBy),
-      updateConfig: (patch) => this.updateConfig(patch),
-      shadowSuggester: this.shadowSuggester,
-    });
-
-    this.dashboardServer = new DashboardServer({
-      api: this.dashboardAPI,
-      port: config.dashboard?.port ?? DEFAULT_DASHBOARD_PORT,
-      webhookAdapter: this.adapterManager.getWebhookAdapter(),
-    });
-
-    if (!this.disabled) {
-      this.shadowAnalyser.start();
-      this.rpmEngine.start();
-      this.activationController.start();
-      this.startRPMSyncInterval();
-      this.dashboardServer.start();
-    }
-
-    // ── Step 7: Startup banner ───────────────────────────────────────────────
-    printStartupBanner({
-      configPath,
-      endpointCount: countRegisteredEndpoints(this.ringMapper),
-      blockCount: countRegisteredBlocks(this.ringMapper),
-      mode: config.mode,
-      shadowModeAvailable: !this.disabled && this.shadowObserver.isActive(),
-      sessionCacheAvailable: !this.disabled,
-      dashboardAvailable: !this.disabled,
-      dashboardPort: config.dashboard?.port ?? DEFAULT_DASHBOARD_PORT,
-      disabled: this.disabled,
-    });
-  }
-
-  // ─── Framework integration ─────────────────────────────────────────────────
-
-  /**
-   * Returns the Express middleware function.
-   * Mount before all routes: app.use(chakraInstance.middleware())
-   */
-  middleware(): RequestHandler {
-    if (this.disabled) {
-      // Pass-through — CHAKRA disabled due to config error
-      return (_req: Request, _res: Response, next: NextFunction) => next();
-    }
-
-    const dispatchMw = createExpressMiddleware(this.dispatcher);
-    const rpmRecorder = createRPMRecorder(
-      this.rpmEngine,
-      (method, path) => this.ringMapper.lookup(method, path).block,
-    );
-    const shadowObserverMw = createShadowObserverMiddleware(this.shadowObserver);
-
-    // Shadow observer and RPM recorder both use res.on('finish') — pure observation,
-    // no latency added. Dispatch middleware decides the outcome.
-    return (req: Request, res: Response, next: NextFunction): void => {
-      shadowObserverMw(req, res, () => {
-        rpmRecorder(req, res, () => {
-          dispatchMw(req, res, next);
-        });
-      });
-    };
-  }
-
-  /**
-   * Returns a route-level middleware that registers this endpoint with the Ring Map.
-   * Add per route: app.get('/api/products', chakraInstance.block('browse-block'), handler)
-   *
-   * Registration is lazy (happens on first request). The first request to an unregistered
-   * route always passes through (default-block is never suspended).
-   */
-  block(blockName: string): RequestHandler {
-    return (req: Request, _res: Response, next: NextFunction): void => {
-      try {
-        const method = req.method?.toUpperCase();
-        const reqPath = req.path;
-        if (method && reqPath) {
-          const routeKey = `${method} ${reqPath}`;
-          if (!this.registeredRoutes.has(routeKey)) {
-            this.registeredRoutes.add(routeKey);
-            this.ringMapper.registerRoute(method, reqPath, blockName);
-            this.ringMapper.compile();
-          }
-        }
-      } catch {
-        /* registration failure must never surface to the app */
-      }
-      next();
-    };
-  }
-
-  // ─── Activation controls ──────────────────────────────────────────────────
-
-  /**
-   * Activate CHAKRA at the given level (default: 1).
-   * @param level  1–3 (clamped). Higher = more aggressive degradation.
-   * @param initiatedBy  Optional identifier for audit log.
-   */
-  activate(level = 1, initiatedBy?: string): void {
-    this.activationController.activate(level, initiatedBy);
-    logger.info(`Activated at level ${Math.min(Math.max(Math.round(level), 1), 3)}.`);
-  }
-
-  /**
-   * Initiate the sleep sequence (gradual restoration by default).
-   * @param sequence  'gradual' steps down one level at a time; 'immediate' snaps back instantly.
-   * @param initiatedBy  Optional identifier for audit log.
-   */
-  initiateSleep(sequence?: 'gradual' | 'immediate', initiatedBy?: string): void {
-    this.activationController.initiateSleep(sequence, initiatedBy);
-  }
-
-  /** Immediate deactivation alias — equivalent to initiateSleep('immediate'). */
-  deactivate(): void {
-    this.activationController.initiateSleep('immediate');
-    this.dashboardAPI.generateIncidentReport();
-    logger.info('Deactivated. Full pass-through restored.');
-  }
-
-  // ─── Observability ─────────────────────────────────────────────────────────
-
-  /** Current operational status snapshot. */
-  status(): ChakraStatus {
-    const activation = this.dispatcher.getActivationState();
-    const rpmState = this.rpmEngine.getState();
-    return {
-      active: activation.active,
-      mode: this.config.mode,
-      currentLevel: activation.currentLevel,
-      rpm: rpmState.global,
-      rpmPhase: rpmState.phase,
-      disabled: this.disabled,
-    };
-  }
-
-  /** Current dispatcher metrics snapshot. */
-  getMetrics(): DispatcherMetrics {
-    return this.dispatcher.getMetrics();
-  }
-
-  /** Current RPM Engine state snapshot. */
-  getRPM(): RPMState {
-    return this.rpmEngine.getState();
-  }
-
-  /** Full activation audit log — most recent entry last. */
-  getActivationLog(): ReturnType<ActivationController['getLog']> {
-    return this.activationController.getLog();
-  }
-
-  /** State of all known blocks at the current activation level. */
-  getBlockStates(): BlockState[] {
-    const level = this.dispatcher.getActivationState().currentLevel;
-    const levelMap = this.ringMapper.getLevelMap();
-    if (level < 0 || level >= levelMap.length) return [];
-
-    const minLevels = this.ringMapper.getBlockMinLevels();
-    const allBlocks = [
-      ...levelMap[level].activeBlocks,
-      ...levelMap[level].suspendedBlocks,
-    ];
-    return allBlocks.map(b => {
-      const state = { ...this.ringMapper.getBlockState(b, level) };
-      return {
-        ...state,
-        name: state.block,
-        minLevel: minLevels.get(state.block) ?? 0,
-        suspended: state.isSuspended,
-      };
-    });
-  }
-
-  // ─── Config management ─────────────────────────────────────────────────────
-
-  /** Apply a partial config update without restart. Takes effect on next evaluation cycle. */
-  updateConfig(patch: Partial<ChakraConfig>): void {
-    this.config = { ...this.config, ...patch };
-    this.activationController.updateConfig(this.config);
-  }
-
-  /** Reload config file from disk. Keeps existing config on failure (CHAKRA Rule #4). */
-  reloadConfig(): void {
-    try {
-      this.config = loadConfig(this.configPath);
-    } catch (err) {
-      logger.warn(`Config reload failed, keeping existing config: ${err instanceof Error ? err.message : String(err)}`);
-    }
-  }
-
-  // ─── Lifecycle ─────────────────────────────────────────────────────────────
-
-  /** Gracefully shut down all background services. */
-  shutdown(): void {
-    this.shadowAnalyser.stop();
-    this.shadowObserver.stop();
-    this.sessionCache.stop();
-    this.activationController.stop();
-    if (this.syncInterval !== null) {
-      clearInterval(this.syncInterval);
-      this.syncInterval = null;
-    }
-    this.rpmEngine.stop();
-    this.dashboardServer.stop();
-    this.dispatcher.setActivationState({ active: false, currentLevel: 0 });
-    logger.info('Shut down.');
-  }
-
-  // ─── Internal helpers ──────────────────────────────────────────────────────
-
-  /**
-   * Register degrade_first paths as low-priority blocks in the Ring Map.
-   * always_protect is handled via PolicyEngine rules (see applyAlwaysProtectRules).
-   */
-  private applyProtectionConfig(config: ChakraConfig): void {
-    if (!config.degrade_first || config.degrade_first.length === 0) return;
-
-    const methods = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'] as const;
-    for (const pathPattern of config.degrade_first) {
-      for (const method of methods) {
-        try {
-          this.ringMapper.registerRoute(method, pathPattern, 'degrade-first-block');
-          // Also register prefix variant to cover sub-paths
-          this.ringMapper.registerRoute(method, `${pathPattern}/*`, 'degrade-first-block');
-        } catch { /* skip duplicate/invalid entries */ }
-      }
-    }
-
-    // Register the block definition with minLevel=3 (first to be suspended)
-    this.ringMapper.registerBlock('degrade-first-block', {
-      endpoints: [],   // endpoints already registered via registerRoute above
-      minLevel: 3,
-      weightBase: 10,
-    });
-
-    this.ringMapper.compile();
-  }
-
-  /**
-   * Apply always_protect paths as high-priority PolicyEngine rules.
-   * Rule: if path starts with protected prefix → serve_fully, regardless of block state.
-   */
-  private applyAlwaysProtectRules(config: ChakraConfig): void {
-    if (!config.always_protect || config.always_protect.length === 0) return;
-
-    const rules = config.always_protect.map((pathPrefix, i) => ({
-      name: `always-protect-${i}`,
-      if: { path_matches: `${pathPrefix}**` },
-      then: { action: 'serve_fully' as const },
-      priority: 10_000 - i,  // highest priority — evaluated before all user rules
-    }));
-
-    this.policyEngine.updateRules(rules);
-  }
-
-  /**
-   * Build an AdapterManager from the infrastructure config.
-   * Always includes a WebhookAdapter. Optionally adds a primary adapter
-   * (kubernetes / ecs / prometheus) based on config.infrastructure.type.
-   * Silently catches adapter construction errors — CHAKRA never crashes.
-   */
-  private buildAdapterManager(config: ChakraConfig): AdapterManager {
-    const webhookAdapter = new WebhookAdapter();
-    const infraConfig = config.infrastructure;
-
-    if (!infraConfig?.type || infraConfig.type === 'webhook') {
-      return new AdapterManager(webhookAdapter);
-    }
-
-    try {
-      if (infraConfig.type === 'kubernetes') {
-        const k8sAdapter = new KubernetesAdapter({
-          namespace: infraConfig.namespace ?? 'default',
-          deploymentNames: infraConfig.deployment_names,
-          authMode: infraConfig.auth ?? 'in-cluster',
-          kubeconfigPath: infraConfig.kubeconfig_path,
-          hostEnv: infraConfig.host_env,
-          tokenEnv: infraConfig.token_env,
-        });
-        return new AdapterManager(webhookAdapter, k8sAdapter);
-      }
-
-      if (infraConfig.type === 'prometheus') {
-        if (!infraConfig.endpoint) {
-          throw new Error('prometheus adapter requires infrastructure.endpoint');
-        }
-        const promAdapter = new PrometheusAdapter({
-          endpoint: infraConfig.endpoint,
-          bearerTokenEnv: infraConfig.bearer_token_env,
-          metrics: infraConfig.metrics as Record<string, string> | undefined,
-        });
-        return new AdapterManager(webhookAdapter, promAdapter);
-      }
-
-      if (infraConfig.type === 'ecs') {
-        if (!infraConfig.region || !infraConfig.cluster || !infraConfig.service_names) {
-          throw new Error('ecs adapter requires infrastructure.region, cluster, and service_names');
-        }
-        const ecsAdapter = new ECSAdapter({
-          region: infraConfig.region,
-          cluster: infraConfig.cluster,
-          serviceNames: infraConfig.service_names,
-        });
-        return new AdapterManager(webhookAdapter, ecsAdapter);
-      }
-    } catch (err) {
-      logger.warn(
-        `Container Bridge adapter (${infraConfig.type}) failed to initialise: ` +
-        `${err instanceof Error ? err.message : String(err)}. Falling back to webhook-only.`,
-      );
-    }
-
-    return new AdapterManager(webhookAdapter);
-  }
-
-  /** Push RPM state to Policy Engine and Dashboard every tick. */
-  private startRPMSyncInterval(): void {
-    const intervalMs = (this.config.rpm_engine?.update_interval_seconds ?? DEFAULT_RPM_INTERVAL_SECONDS) * 1000;
-
-    this.syncInterval = setInterval(() => {
-      try {
-        const rpmState = this.rpmEngine.getState();
-        this.policyEngine.setRPMState(rpmState);
-        this.dashboardServer.broadcastRPMUpdate(rpmState);
-      } catch {
-        /* background timer must never propagate exceptions */
-      }
-    }, intervalMs);
-
-    if (typeof this.syncInterval.unref === 'function') {
-      this.syncInterval.unref();
-    }
-  }
-}
-
-// ─── Factory function ─────────────────────────────────────────────────────────
 
 /**
- * Create a CHAKRA middleware instance.
- *
- * @param configPath Path to chakra.config.yaml
- * @returns ChakraInstance ready to mount as middleware
- *
- * @example
- * const chakraInstance = chakra('./chakra.config.yaml');
- * app.use(chakraInstance.middleware());
+ * Create a CHAKRA instance. Throws ChakraConfigError for invalid options;
+ * nothing after construction throws into the application.
  */
-export function chakra(configPath: string): ChakraInstance {
-  return new ChakraInstance(configPath);
-}
+export function chakra(options: ChakraOptions = {}): ChakraInstance {
+  const resolved = resolveOptions(options);
+  const sink = createSink(resolved);
+  const limiter: Limiter = admitAllLimiter();
+  const resolver = exactRouteResolver(resolved.routes);
+  const core = createAdmissionCore({ options: resolved, limiter, resolver, sink });
 
-// ─── Re-exports ───────────────────────────────────────────────────────────────
-
-export type {
-  SessionContext, RouteInfo, SuspendedResponse, DispatchOutcome,
-  RPMState, BlockState, RecordRequestParams, BaselineConfig,
-  UnmatchedEndpointMode, SuspendedBlockResponseType, SuspendedBlockConfig,
-  BlockDefinition, RingMapConfig, LevelState,
-  ActivationState, DispatcherMetrics,
-  RPMHistoryEntry, IncidentReport,
-} from './types';
-export {
-  DashboardAPI,
-  type DashboardAPIConfig,
-  type PoliciesResponse,
-  type PolicySuggestion,
-  type RPMResponse,
-  type BlocksResponse,
-  type LearningResponse,
-  type HistoryResponse,
-} from './dashboard/api';
-export { DashboardServer, type DashboardServerConfig } from './dashboard/server';
-
-export { RingMapper } from './core/ring-mapper';
-export { Dispatcher } from './core/dispatcher';
-export { WeightEngine } from './core/weight-engine';
-export {
-  PolicyEngine,
-  type PolicyRule,
-  type PolicyConditions,
-  type PolicyAction,
-  type PolicyEngineConfig,
-} from './core/policy-engine';
-export {
-  ActivationController,
-  type ActivationLogEntry,
-  type ActivationControllerConfig,
-  type RestoreSequence,
-  type LogEntryKind,
-} from './core/activation';
-export { default as RPMEngine } from './background/rpm-engine';
-export type { ChakraConfig } from './config/loader';
-export type {
-  InfrastructureAdapter,
-  InfrastructureSnapshot,
-  BoolSignal,
-  NumberSignal,
-  Confidence,
-} from './integrations/adapter-interface';
-export { WebhookAdapter, type WebhookSignalPayload } from './integrations/container-bridge/webhook';
-export { KubernetesAdapter, type KubernetesAdapterConfig, type KubernetesAuthMode } from './integrations/container-bridge/kubernetes';
-export { PrometheusAdapter, type PrometheusAdapterConfig, type PrometheusMetricNames } from './integrations/container-bridge/prometheus';
-export { ECSAdapter, type ECSAdapterConfig } from './integrations/container-bridge/ecs';
-export { AdapterManager, type HoldDecision } from './integrations/container-bridge/adapter-manager';
-export { SessionCache, type SessionCacheConfig } from './background/session-cache';
-export {
-  ShadowModeObserver,
-  normalizeEndpoint,
-  classifyDevice,
-  type ObservationRecord,
-  type RequestSnapshot,
-  type ResponseSnapshot,
-  type ObserverConfig,
-} from './background/shadow-mode/observer';
-export {
-  ShadowModeAnalyser,
-  type LearningProgress,
-  type EndpointStats,
-  type BlockSuggestion,
-  type TrafficPattern,
-  type MomentOfValueSignature,
-} from './background/shadow-mode/analyser';
-export {
-  ShadowModeSuggester,
-  type RingMapSuggestion,
-  type RPMThresholdSuggestion,
-  type PolicySuggestion as ShadowPolicySuggestion,
-  type AllSuggestions,
-} from './background/shadow-mode/suggester';
-export { sha256, hashId } from './utils/hasher';
-
-// ─── Internal helpers (module-level) ─────────────────────────────────────────
-
-function countRegisteredEndpoints(ringMapper: RingMapper): number {
-  let count = 0;
-  for (const level of ringMapper.getLevelMap()) {
-    count = Math.max(count, level.activeBlocks.length + level.suspendedBlocks.length);
+  if (resolved.mode !== 'off') limiter.start();
+  if (resolved.logger) {
+    resolved.logger.info(
+      `mode=${resolved.mode} routes=${Object.keys(resolved.routes).length} default=${resolved.defaultPriority}`,
+    );
   }
-  // Use the unmatched map size as a proxy for registered endpoint count
-  // (actual count is internal to RingMapper — using block count as approximation)
-  return count;
+
+  let closed = false;
+  return {
+    options: resolved,
+    get mode() {
+      return core.mode;
+    },
+    decide: core.decide,
+    setOverrides: core.setOverrides,
+    getOverrides: core.getOverrides,
+    snapshot: () => limiter.snapshot(),
+    metricsHandler: (_req, res) => serveMetrics(sink, res),
+    close() {
+      if (closed) return;
+      closed = true;
+      limiter.stop();
+    },
+  };
 }
 
-function countRegisteredBlocks(ringMapper: RingMapper): number {
-  const levelMap = ringMapper.getLevelMap();
-  if (levelMap.length === 0) return 0;
-  return levelMap[0].activeBlocks.length + levelMap[0].suspendedBlocks.length;
+function createSink(options: ResolvedOptions): ChakraEventSink {
+  if (options.metrics === false) return NOOP_SINK;
+  if (isSink(options.metrics)) return options.metrics;
+  // Prometheus exporter is wired in when src/observability/ lands.
+  return NOOP_SINK;
 }
+
+function serveMetrics(sink: ChakraEventSink, res: ServerResponse): void {
+  try {
+    if (!isExporter(sink)) {
+      res.statusCode = 404;
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      res.end('CHAKRA metrics are disabled\n');
+      return;
+    }
+    const body = sink.render();
+    res.statusCode = 200;
+    res.setHeader('Content-Type', sink.contentType);
+    res.end(body);
+  } catch {
+    if (!res.headersSent) res.statusCode = 500;
+    res.end();
+  }
+}
+
+function isSink(value: unknown): value is ChakraEventSink {
+  return typeof value === 'object' && value !== null && typeof (value as ChakraEventSink).emit === 'function';
+}
+
+function isExporter(sink: ChakraEventSink): sink is MetricsExporter {
+  return typeof (sink as MetricsExporter).render === 'function';
+}
+
+export { ChakraConfigError, type ChakraOptions, type MetricsOptions, type ResolvedOptions } from './config/schema';
+export type { Overrides } from './core/admission';
+export * from './types';
