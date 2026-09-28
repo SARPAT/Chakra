@@ -18,8 +18,18 @@ export interface DryRunReporterOptions {
 }
 
 /** Lifetime totals (unaffected by `reset()`). */
-export interface DryRunStats { wouldShed: number; wouldDegrade: number; suppressed: number; logged: number }
-export interface DryRunRouteReport { route: string; band: PriorityBand; shed: number; degraded: number }
+export interface DryRunStats {
+  wouldShed: number;
+  wouldDegrade: number;
+  suppressed: number;
+  logged: number;
+}
+export interface DryRunRouteReport {
+  route: string;
+  band: PriorityBand;
+  shed: number;
+  degraded: number;
+}
 /** Counts since creation or the last `reset()`; `byRoute` is most would-shed first. */
 export interface DryRunReport {
   since: number;
@@ -48,29 +58,48 @@ export function createDryRunReporter(opts: DryRunReporterOptions = {}): DryRunRe
   const intervalMs = opts.intervalMs ?? 10_000;
 
   const totals: DryRunStats = { wouldShed: 0, wouldDegrade: 0, suppressed: 0, logged: 0 };
-  let [windowStart, loggedInWindow, suppressedInWindow, reportSuppressed, since] = [-Infinity, 0, 0, 0, now()];
+  let [windowStart, loggedInWindow, suppressedInWindow, reportSuppressed, since] = [
+    -Infinity,
+    0,
+    0,
+    0,
+    now(),
+  ];
   let suppressed = new Map<string, number>();
   let byRoute = new Map<string, DryRunRouteReport>();
 
-  const write = (obj: object): void => { try { log(JSON.stringify(obj)); } catch { /* best-effort */ } };
+  const write = (obj: object): void => {
+    try {
+      log(JSON.stringify(obj));
+    } catch {
+      /* best-effort */
+    }
+  };
 
   function writeSummary(): void {
     if (suppressedInWindow === 0) return;
     const top = [...suppressed].sort((a, b) => b[1] - a[1]).slice(0, SUMMARY_TOP_KEYS);
     write({
-      level: 'info', msg: 'chakra dry-run: suppressed similar logs', component: 'chakra',
-      mode: 'dry-run', suppressed: suppressedInWindow, counts: Object.fromEntries(top),
+      level: 'info',
+      msg: 'chakra dry-run: suppressed similar logs',
+      component: 'chakra',
+      mode: 'dry-run',
+      suppressed: suppressedInWindow,
+      counts: Object.fromEntries(top),
     });
     [suppressedInWindow, suppressed] = [0, new Map()];
   }
 
   /** `route`, or the overflow route if `prefix|route` is new and `map` is full. */
   const cap = (map: Map<string, unknown>, prefix: string, route: string): string =>
-    map.size < DRY_RUN_MAX_ROUTE_KEYS || map.has(`${prefix}|${route}`) ? route : DRY_RUN_OVERFLOW_ROUTE;
+    map.size < DRY_RUN_MAX_ROUTE_KEYS || map.has(`${prefix}|${route}`)
+      ? route
+      : DRY_RUN_OVERFLOW_ROUTE;
 
   return {
     emit(event: ChakraEvent): void {
-      if (event?.type !== 'admission' || event.dryRun !== true || event.decision === 'admitted') return;
+      if (event?.type !== 'admission' || event.dryRun !== true || event.decision === 'admitted')
+        return;
       try {
         const { decision, band, route } = event;
         const shed = decision === 'shed';
@@ -78,17 +107,33 @@ export function createDryRunReporter(opts: DryRunReporterOptions = {}): DryRunRe
         const rKey = `${band}|${r}`;
         let entry = byRoute.get(rKey);
         if (!entry) byRoute.set(rKey, (entry = { route: r, band, shed: 0, degraded: 0 }));
-        if (shed) { totals.wouldShed++; entry.shed++; } else { totals.wouldDegrade++; entry.degraded++; }
+        if (shed) {
+          totals.wouldShed++;
+          entry.shed++;
+        } else {
+          totals.wouldDegrade++;
+          entry.degraded++;
+        }
 
         const t = now();
-        if (t - windowStart >= intervalMs) { writeSummary(); [windowStart, loggedInWindow] = [t, 0]; }
+        if (t - windowStart >= intervalMs) {
+          writeSummary();
+          [windowStart, loggedInWindow] = [t, 0];
+        }
         if (loggedInWindow < maxLogs) {
           loggedInWindow++;
           totals.logged++;
           write({
-            level: 'info', msg: `chakra dry-run: would have ${shed ? 'shed' : 'degraded'}`,
-            component: 'chakra', mode: 'dry-run', decision, band, route,
-            reason: event.reason, limit: event.limit, inFlight: event.inFlight,
+            level: 'info',
+            msg: `chakra dry-run: would have ${shed ? 'shed' : 'degraded'}`,
+            component: 'chakra',
+            mode: 'dry-run',
+            decision,
+            band,
+            route,
+            reason: event.reason,
+            limit: event.limit,
+            inFlight: event.inFlight,
           });
           return;
         }
@@ -105,14 +150,21 @@ export function createDryRunReporter(opts: DryRunReporterOptions = {}): DryRunRe
       try {
         writeSummary();
         if (now() - windowStart >= intervalMs) loggedInWindow = 0;
-      } catch { /* best-effort */ }
+      } catch {
+        /* best-effort */
+      }
     },
     stats: () => ({ ...totals }),
     report(): DryRunReport {
       const byRouteCopy = [...byRoute.values()].map((e) => ({ ...e }));
       const totals = { shed: 0, degraded: 0, suppressed: reportSuppressed };
-      for (const e of byRouteCopy) { totals.shed += e.shed; totals.degraded += e.degraded; }
-      byRouteCopy.sort((a, b) => b.shed - a.shed || b.degraded - a.degraded || a.route.localeCompare(b.route));
+      for (const e of byRouteCopy) {
+        totals.shed += e.shed;
+        totals.degraded += e.degraded;
+      }
+      byRouteCopy.sort(
+        (a, b) => b.shed - a.shed || b.degraded - a.degraded || a.route.localeCompare(b.route),
+      );
       return { since, totals, byRoute: byRouteCopy };
     },
     reset: () => void ([since, reportSuppressed, byRoute] = [now(), 0, new Map()]),

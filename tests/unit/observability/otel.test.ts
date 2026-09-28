@@ -9,15 +9,25 @@ import type { ChakraEvent, AdmissionEvent } from '../../../src/types';
 // context, promise-returning callbacks, required removeCallback) and are passed
 // without a cast, exercising how loose MeterLike is.
 type Attributes = { [key: string]: string | number | boolean | undefined };
-type Options = { description?: string; unit?: string; valueType?: number; advice?: { explicitBucketBoundaries?: number[] } };
-type Callback = (result: { observe(value: number, attributes?: Attributes): void }) => void | Promise<void>;
+type Options = {
+  description?: string;
+  unit?: string;
+  valueType?: number;
+  advice?: { explicitBucketBoundaries?: number[] };
+};
+type Callback = (result: {
+  observe(value: number, attributes?: Attributes): void;
+}) => void | Promise<void>;
 type Call = { value: number; attributes?: Attributes };
 
 class FakeInstrument {
   calls: Call[] = [];
   callbacks: Callback[] = [];
   throws = false;
-  constructor(public name: string, public options?: Options) {}
+  constructor(
+    public name: string,
+    public options?: Options,
+  ) {}
   add(value: number, attributes?: Attributes, _context?: unknown): void {
     if (this.throws) throw new Error('broke');
     this.calls.push({ value, attributes });
@@ -45,13 +55,25 @@ class FakeMeter {
     this.all.set(name, i);
     return i;
   }
-  createCounter(name: string, options?: Options) { return this.make(name, options); }
-  createHistogram(name: string, options?: Options) { return this.make(name, options); }
-  createObservableGauge(name: string, options?: Options) { return this.make(name, options); }
+  createCounter(name: string, options?: Options) {
+    return this.make(name, options);
+  }
+  createHistogram(name: string, options?: Options) {
+    return this.make(name, options);
+  }
+  createObservableGauge(name: string, options?: Options) {
+    return this.make(name, options);
+  }
 }
 
-const admission = (o: Partial<AdmissionEvent> = {}): AdmissionEvent =>
-  ({ type: 'admission', decision: 'admitted', band: 'normal', route: 'GET /users/:id', dryRun: false, ...o });
+const admission = (o: Partial<AdmissionEvent> = {}): AdmissionEvent => ({
+  type: 'admission',
+  decision: 'admitted',
+  band: 'normal',
+  route: 'GET /users/:id',
+  dryRun: false,
+  ...o,
+});
 
 describe('createOtelSink', () => {
   let meter: FakeMeter;
@@ -73,8 +95,13 @@ describe('createOtelSink', () => {
     expect(prom('chakra.inflight_requests')).toBe(METRICS.inFlight.name);
     expect(prom('chakra.concurrency_limit')).toBe(METRICS.concurrencyLimit.name);
     expect(prom('chakra.event_loop.lag')).toBe(METRICS.eventLoopLag.name);
-    expect(counter().options).toMatchObject({ unit: '{request}', description: METRICS.requests.help });
-    expect(histogram().options?.advice?.explicitBucketBoundaries).toEqual([...METRICS.shedLatency.buckets]);
+    expect(counter().options).toMatchObject({
+      unit: '{request}',
+      description: METRICS.requests.help,
+    });
+    expect(histogram().options?.advice?.explicitBucketBoundaries).toEqual([
+      ...METRICS.shedLatency.buckets,
+    ]);
   });
 
   it('counts admissions with decision, band, route and boolean dry_run', () => {
@@ -82,8 +109,19 @@ describe('createOtelSink', () => {
     sink.emit(admission({ decision: 'shed', band: 'sheddable', route: 'POST /cart' }));
     sink.emit(admission({ dryRun: true }));
     expect(counter().calls).toEqual([
-      { value: 1, attributes: { decision: 'shed', band: 'sheddable', route: 'POST /cart', dry_run: false } },
-      { value: 1, attributes: { decision: 'admitted', band: 'normal', route: 'GET /users/:id', dry_run: true } },
+      {
+        value: 1,
+        attributes: { decision: 'shed', band: 'sheddable', route: 'POST /cart', dry_run: false },
+      },
+      {
+        value: 1,
+        attributes: {
+          decision: 'admitted',
+          band: 'normal',
+          route: 'GET /users/:id',
+          dry_run: true,
+        },
+      },
     ]);
   });
 
@@ -99,9 +137,16 @@ describe('createOtelSink', () => {
 
   it('reports routes beyond maxRoutes as OVERFLOW_ROUTE', () => {
     const sink = createOtelSink(meter, { maxRoutes: 2 });
-    for (const route of ['GET /a', 'GET /b', 'GET /c', 'GET /a', 'GET /d', 'GET /b']) sink.emit(admission({ route }));
-    expect(counter().calls.map((c) => c.attributes?.route))
-      .toEqual(['GET /a', 'GET /b', OVERFLOW_ROUTE, 'GET /a', OVERFLOW_ROUTE, 'GET /b']);
+    for (const route of ['GET /a', 'GET /b', 'GET /c', 'GET /a', 'GET /d', 'GET /b'])
+      sink.emit(admission({ route }));
+    expect(counter().calls.map((c) => c.attributes?.route)).toEqual([
+      'GET /a',
+      'GET /b',
+      OVERFLOW_ROUTE,
+      'GET /a',
+      OVERFLOW_ROUTE,
+      'GET /b',
+    ]);
   });
 
   it('defaults to DEFAULT_MAX_ROUTES distinct routes', () => {
@@ -119,7 +164,11 @@ describe('createOtelSink', () => {
 
   it('gauges observe nothing until a value arrives, then the latest', () => {
     const sink = createOtelSink(meter);
-    for (const n of ['chakra.inflight_requests', 'chakra.concurrency_limit', 'chakra.event_loop.lag']) {
+    for (const n of [
+      'chakra.inflight_requests',
+      'chakra.concurrency_limit',
+      'chakra.event_loop.lag',
+    ]) {
       expect(get(n).collect()).toEqual([]);
     }
     sink.emit({ type: 'limiter_state', limit: 10, inFlight: 3 });
@@ -162,11 +211,19 @@ describe('createOtelSink', () => {
     counter().throws = true;
     histogram().throws = true;
     expect(() => sink.emit(admission({ limit: 9 }))).not.toThrow();
-    expect(() => sink.emit({ type: 'shed_complete', band: 'normal', route: 'GET /', durationMs: 1 })).not.toThrow();
+    expect(() =>
+      sink.emit({ type: 'shed_complete', band: 'normal', route: 'GET /', durationMs: 1 }),
+    ).not.toThrow();
     expect(() => sink.emit(null as unknown as ChakraEvent)).not.toThrow();
     expect(() => sink.emit({ type: 'nope' } as unknown as ChakraEvent)).not.toThrow();
     const cb = get('chakra.concurrency_limit').callbacks[0];
-    expect(() => cb({ observe: () => { throw new Error('observe broke'); } })).not.toThrow();
+    expect(() =>
+      cb({
+        observe: () => {
+          throw new Error('observe broke');
+        },
+      }),
+    ).not.toThrow();
     expect(get('chakra.concurrency_limit').collect()).toEqual([9]);
   });
 });

@@ -18,7 +18,11 @@ export function createEventBus(...sinks: ChakraEventSink[]): ChakraEventBus {
     emit(event: ChakraEvent): void {
       const current = list;
       for (let i = 0; i < current.length; i++) {
-        try { current[i].emit(event); } catch { /* isolate failing sinks */ }
+        try {
+          current[i].emit(event);
+        } catch {
+          /* isolate failing sinks */
+        }
       }
     },
     add(sink: ChakraEventSink): () => void {

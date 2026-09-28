@@ -9,14 +9,27 @@ const LAG: ChakraEvent = { type: 'event_loop_lag', lagMs: 3 };
 
 function recorder(): ChakraEventSink & { events: ChakraEvent[] } {
   const events: ChakraEvent[] = [];
-  return { events, emit: (e) => { events.push(e); } };
+  return {
+    events,
+    emit: (e) => {
+      events.push(e);
+    },
+  };
 }
 
 describe('createEventBus', () => {
   it('forwards each event to every initial sink in order', () => {
     const order: string[] = [];
-    const a = { emit: vi.fn(() => { order.push('a'); }) };
-    const b = { emit: vi.fn(() => { order.push('b'); }) };
+    const a = {
+      emit: vi.fn(() => {
+        order.push('a');
+      }),
+    };
+    const b = {
+      emit: vi.fn(() => {
+        order.push('b');
+      }),
+    };
     const bus = createEventBus(a, b);
 
     bus.emit(LAG);
@@ -33,7 +46,11 @@ describe('createEventBus', () => {
   it('isolates a throwing sink: others still receive the event and emit does not throw', () => {
     const before = recorder();
     const after = recorder();
-    const bad = { emit: () => { throw new Error('boom'); } };
+    const bad = {
+      emit: () => {
+        throw new Error('boom');
+      },
+    };
     const bus = createEventBus(before, bad, after);
 
     expect(() => bus.emit(LAG)).not.toThrow();
@@ -44,7 +61,14 @@ describe('createEventBus', () => {
 
   it('isolates sinks that throw non-Error values', () => {
     const good = recorder();
-    const bus = createEventBus({ emit: () => { throw 'string'; } }, good);
+    const bus = createEventBus(
+      {
+        emit: () => {
+          throw 'string';
+        },
+      },
+      good,
+    );
     expect(() => bus.emit(LAG)).not.toThrow();
     expect(good.events).toEqual([LAG]);
   });
@@ -52,7 +76,9 @@ describe('createEventBus', () => {
   it('keeps the sink as `this` when calling emit', () => {
     const sink = {
       seen: 0,
-      emit(this: { seen: number }) { this.seen++; },
+      emit(this: { seen: number }) {
+        this.seen++;
+      },
     };
     createEventBus(sink).emit(LAG);
     expect(sink.seen).toBe(1);

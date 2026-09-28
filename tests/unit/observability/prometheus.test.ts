@@ -5,7 +5,14 @@ import { createPrometheusExporter } from '../../../src/observability/prometheus'
 import type { AdmissionEvent } from '../../../src/types';
 
 function admission(overrides: Partial<AdmissionEvent> = {}): AdmissionEvent {
-  return { type: 'admission', decision: 'shed', band: 'sheddable', route: 'GET /feed', dryRun: false, ...overrides };
+  return {
+    type: 'admission',
+    decision: 'shed',
+    band: 'sheddable',
+    route: 'GET /feed',
+    dryRun: false,
+    ...overrides,
+  };
 }
 
 describe('createPrometheusExporter', () => {
@@ -18,9 +25,15 @@ describe('createPrometheusExporter', () => {
 
     const text = exporter.render();
     expect(text).toContain('# TYPE chakra_requests_total counter');
-    expect(text).toContain('chakra_requests_total{decision="shed",band="sheddable",route="GET /feed",dry_run="false"} 2');
-    expect(text).toContain('chakra_requests_total{decision="admitted",band="critical",route="POST /checkout",dry_run="false"} 1');
-    expect(text).toContain('chakra_requests_total{decision="degraded",band="normal",route="GET /feed",dry_run="true"} 1');
+    expect(text).toContain(
+      'chakra_requests_total{decision="shed",band="sheddable",route="GET /feed",dry_run="false"} 2',
+    );
+    expect(text).toContain(
+      'chakra_requests_total{decision="admitted",band="critical",route="POST /checkout",dry_run="false"} 1',
+    );
+    expect(text).toContain(
+      'chakra_requests_total{decision="degraded",band="normal",route="GET /feed",dry_run="true"} 1',
+    );
     expect(text.match(/^chakra_requests_total\{/gm)).toHaveLength(3);
   });
 
@@ -38,9 +51,19 @@ describe('createPrometheusExporter', () => {
 
   it('renders shed latency as a cumulative histogram per band', () => {
     const exporter = createPrometheusExporter();
-    exporter.emit({ type: 'shed_complete', band: 'sheddable', route: 'GET /feed', durationMs: 0.08 });
+    exporter.emit({
+      type: 'shed_complete',
+      band: 'sheddable',
+      route: 'GET /feed',
+      durationMs: 0.08,
+    });
     exporter.emit({ type: 'shed_complete', band: 'sheddable', route: 'GET /feed', durationMs: 3 });
-    exporter.emit({ type: 'shed_complete', band: 'sheddable', route: 'GET /feed', durationMs: 500 });
+    exporter.emit({
+      type: 'shed_complete',
+      band: 'sheddable',
+      route: 'GET /feed',
+      durationMs: 500,
+    });
 
     const text = exporter.render();
     expect(text).toContain('chakra_shed_latency_seconds_bucket{band="sheddable",le="0.00005"} 0');
@@ -55,7 +78,8 @@ describe('createPrometheusExporter', () => {
 
   it('caps distinct routes and counts the rest as __other__', () => {
     const exporter = createPrometheusExporter({ maxRoutes: 2 });
-    for (const route of ['GET /a', 'GET /b', 'GET /c', 'GET /d', 'GET /a']) exporter.emit(admission({ route }));
+    for (const route of ['GET /a', 'GET /b', 'GET /c', 'GET /d', 'GET /a'])
+      exporter.emit(admission({ route }));
 
     const text = exporter.render();
     expect(text).toContain('route="GET /a",dry_run="false"} 2');
@@ -73,7 +97,11 @@ describe('createPrometheusExporter', () => {
   it('applies a custom prefix to every metric', () => {
     const exporter = createPrometheusExporter({ prefix: 'shop_' });
     exporter.emit(admission());
-    const names = exporter.render().split('\n').filter((l) => l && !l.startsWith('#')).map((l) => l.split(/[{ ]/)[0]);
+    const names = exporter
+      .render()
+      .split('\n')
+      .filter((l) => l && !l.startsWith('#'))
+      .map((l) => l.split(/[{ ]/)[0]);
     expect(names.length).toBeGreaterThan(0);
     for (const n of names) expect(n.startsWith('shop_')).toBe(true);
   });
@@ -88,7 +116,13 @@ describe('createPrometheusExporter', () => {
 
   it('never throws on malformed events', () => {
     const exporter = createPrometheusExporter();
-    const bad = [null, undefined, {}, { type: 'admission', band: 'bogus', decision: 'shed' }, { type: 'shed_complete' }];
+    const bad = [
+      null,
+      undefined,
+      {},
+      { type: 'admission', band: 'bogus', decision: 'shed' },
+      { type: 'shed_complete' },
+    ];
     for (const event of bad) expect(() => exporter.emit(event as never)).not.toThrow();
     expect(() => exporter.render()).not.toThrow();
   });

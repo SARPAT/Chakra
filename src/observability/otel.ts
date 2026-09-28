@@ -15,13 +15,20 @@ import type { ChakraEvent, ChakraEventSink } from '../types';
 import { DEFAULT_MAX_ROUTES, METRICS, OVERFLOW_ROUTE } from './metric-names';
 
 type Attrs = Record<string, string | number | boolean>;
-type Options = { description?: string; unit?: string; advice?: { explicitBucketBoundaries?: number[] } };
+type Options = {
+  description?: string;
+  unit?: string;
+  advice?: { explicitBucketBoundaries?: number[] };
+};
 type Callback = (result: { observe(value: number, attributes?: Attrs): void }) => void;
 
 /** Structural subset of an OTel `Meter`; a real `@opentelemetry/api` Meter is assignable without a cast. */
 export interface MeterLike {
   createCounter(name: string, options?: Options): { add(value: number, attributes?: Attrs): void };
-  createHistogram(name: string, options?: Options): { record(value: number, attributes?: Attrs): void };
+  createHistogram(
+    name: string,
+    options?: Options,
+  ): { record(value: number, attributes?: Attrs): void };
   createObservableGauge(
     name: string,
     options?: Options,
@@ -56,11 +63,21 @@ export function createOtelSink(
     unit: 's',
     advice: { explicitBucketBoundaries: [...METRICS.shedLatency.buckets] },
   });
-  const gauge = (name: string, description: string, unit: string, read: () => number | undefined) => {
+  const gauge = (
+    name: string,
+    description: string,
+    unit: string,
+    read: () => number | undefined,
+  ) => {
     const g = meter.createObservableGauge(name, { description, unit });
     const cb: Callback = (result) => {
       const value = read();
-      if (value !== undefined) try { result.observe(value); } catch { /* never throw into the SDK */ }
+      if (value !== undefined)
+        try {
+          result.observe(value);
+        } catch {
+          /* never throw into the SDK */
+        }
     };
     g.addCallback(cb);
     detach.push(() => g.removeCallback?.(cb));
@@ -69,7 +86,12 @@ export function createOtelSink(
   gauge('chakra.concurrency_limit', METRICS.concurrencyLimit.help, '{request}', () => latest.limit);
   gauge('chakra.event_loop.lag', METRICS.eventLoopLag.help, 's', () => latest.lag);
 
-  function admissionAttrs(decision: string, band: string, rawRoute: string, dryRun: boolean): Attrs {
+  function admissionAttrs(
+    decision: string,
+    band: string,
+    rawRoute: string,
+    dryRun: boolean,
+  ): Attrs {
     let route = rawRoute;
     if (!routes.has(route)) {
       if (routes.size < maxRoutes) routes.add(route);
@@ -91,7 +113,8 @@ export function createOtelSink(
       case 'limiter_state':
         if (e.limit !== undefined) latest.limit = e.limit;
         if (e.inFlight !== undefined) latest.inFlight = e.inFlight;
-        if (e.type === 'admission') requests.add(1, admissionAttrs(e.decision, e.band, e.route, e.dryRun));
+        if (e.type === 'admission')
+          requests.add(1, admissionAttrs(e.decision, e.band, e.route, e.dryRun));
         break;
       case 'shed_complete': {
         let attrs = bandAttrs.get(e.band);
@@ -108,12 +131,21 @@ export function createOtelSink(
   return {
     emit(event) {
       if (stopped) return;
-      try { handle(event); } catch { /* sinks must never throw into the request path */ }
+      try {
+        handle(event);
+      } catch {
+        /* sinks must never throw into the request path */
+      }
     },
     shutdown() {
       if (stopped) return;
       stopped = true;
-      for (const fn of detach) try { fn(); } catch { /* best effort */ }
+      for (const fn of detach)
+        try {
+          fn();
+        } catch {
+          /* best effort */
+        }
     },
   };
 }

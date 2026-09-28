@@ -54,7 +54,9 @@ export function createPrometheusExporter(options: PrometheusExporterOptions = {}
           const band = BAND_INDEX[event.band];
           const decision = DECISION_INDEX[event.decision];
           if (band === undefined || decision === undefined) return;
-          countersFor(event.route)[((event.dryRun ? DECISIONS.length : 0) + decision) * BANDS + band]++;
+          countersFor(event.route)[
+            ((event.dryRun ? DECISIONS.length : 0) + decision) * BANDS + band
+          ]++;
           if (event.limit !== undefined) limit = event.limit;
           if (event.inFlight !== undefined) inFlight = event.inFlight;
           return;
@@ -98,7 +100,9 @@ export function createPrometheusExporter(options: PrometheusExporterOptions = {}
         const band = PRIORITY_BANDS[slot % BANDS];
         const decision = DECISIONS[Math.floor(slot / BANDS) % DECISIONS.length];
         const dryRun = slot >= SLOTS / 2;
-        out.push(`${requestsName}{decision="${decision}",band="${band}",route="${routeLabel}",dry_run="${dryRun}"} ${counters[slot]}`);
+        out.push(
+          `${requestsName}{decision="${decision}",band="${band}",route="${routeLabel}",dry_run="${dryRun}"} ${counters[slot]}`,
+        );
       }
     }
 
