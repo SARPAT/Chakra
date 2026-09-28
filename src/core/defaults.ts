@@ -17,14 +17,21 @@ import {
 } from '../types';
 
 const NOOP_TOKEN: LimiterToken = Object.freeze({ release: () => {} });
-const ADMITTED: AcquireResult = Object.freeze({ admitted: true, degraded: false, token: NOOP_TOKEN });
+const ADMITTED: AcquireResult = Object.freeze({
+  admitted: true,
+  degraded: false,
+  token: NOOP_TOKEN,
+});
 const IDLE_SNAPSHOT: LimiterSnapshot = Object.freeze({
   limit: Number.POSITIVE_INFINITY,
   inFlight: 0,
   pressure: 0,
   eventLoopDelayMs: 0,
   bandLimits: Object.freeze(
-    Object.fromEntries(PRIORITIES.map((p) => [p, Number.POSITIVE_INFINITY])) as Record<Priority, number>,
+    Object.fromEntries(PRIORITIES.map((p) => [p, Number.POSITIVE_INFINITY])) as Record<
+      Priority,
+      number
+    >,
   ),
 });
 

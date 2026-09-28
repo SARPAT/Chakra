@@ -33,7 +33,13 @@ describe('resolveOptions defaults', () => {
             '* /health': 'critical',
           },
           priority: () => undefined,
-          limiter: { algorithm: 'aimd', initialLimit: 10, minLimit: 2, maxLimit: 100, bandShares: { sheddable: 0.3 } },
+          limiter: {
+            algorithm: 'aimd',
+            initialLimit: 10,
+            minLimit: 2,
+            maxLimit: 100,
+            bandShares: { sheddable: 0.3 },
+          },
           shedResponse: { status: 429, retryAfterSeconds: 5, headers: { 'X-Reason': 'busy' } },
           metrics: { prefix: 'shop_', maxRoutes: 50 },
           logger: false,
@@ -123,6 +129,8 @@ describe('validation', () => {
   });
 
   it('throws ChakraConfigError with a readable message', () => {
-    expect(() => resolveOptions({ mode: 'x' } as never, {})).toThrow(/Invalid CHAKRA options:\n {2}- mode/);
+    expect(() => resolveOptions({ mode: 'x' } as never, {})).toThrow(
+      /Invalid CHAKRA options:\n {2}- mode/,
+    );
   });
 });
