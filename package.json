@@ -49,10 +49,14 @@
   },
   "homepage": "https://github.com/SARPAT/Chakra#readme",
   "peerDependencies": {
-    "express": ">=4"
+    "express": ">=4",
+    "fastify": ">=4"
   },
   "peerDependenciesMeta": {
     "express": {
+      "optional": true
+    },
+    "fastify": {
       "optional": true
     }
   },
@@ -64,6 +68,7 @@
     "eslint": "^9.39.5",
     "eslint-config-prettier": "^9.1.2",
     "express": "^4.21.0",
+    "fastify": "^5.12.5",
     "globals": "^15.15.0",
     "prettier": "^3.9.9",
     "supertest": "^7.2.2",
