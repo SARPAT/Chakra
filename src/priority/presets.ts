@@ -13,5 +13,7 @@ export const EMERGENCY_PRESETS: Readonly<Record<EmergencyPreset, Overrides>> = O
   'restore-all': Object.freeze({ closedBands: Object.freeze([]) }),
   'shed-sheddable': Object.freeze({ closedBands: Object.freeze(['sheddable'] as const) }),
   'shed-normal': Object.freeze({ closedBands: Object.freeze(['normal', 'sheddable'] as const) }),
-  'critical-only': Object.freeze({ closedBands: Object.freeze(['high', 'normal', 'sheddable'] as const) }),
+  'critical-only': Object.freeze({
+    closedBands: Object.freeze(['high', 'normal', 'sheddable'] as const),
+  }),
 });

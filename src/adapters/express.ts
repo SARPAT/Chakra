@@ -75,10 +75,13 @@ function walk(stack: Layer[] | undefined, prefix: string, table: RouteTable): vo
       let tag: RouteRuleInput | undefined;
       for (const l of layer.route.stack) tag ??= getRouteTag(l.handle);
       if (!tag) continue;
-      const methods = layer.route.methods._all ? ['*'] : Object.keys(layer.route.methods).map((m) => m.toUpperCase());
+      const methods = layer.route.methods._all
+        ? ['*']
+        : Object.keys(layer.route.methods).map((m) => m.toUpperCase());
       const paths = Array.isArray(layer.route.path) ? layer.route.path : [layer.route.path];
       for (const p of paths) {
-        if (typeof p === 'string') for (const m of methods) addUnlessConfigured(table, m, prefix + p, tag);
+        if (typeof p === 'string')
+          for (const m of methods) addUnlessConfigured(table, m, prefix + p, tag);
       }
     } else if (layer.handle?.stack) {
       const mount = mountPath(layer);

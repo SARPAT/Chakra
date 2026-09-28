@@ -17,12 +17,18 @@ async function app(options: ChakraOptions = {}, adapter: FastifyAdapterOptions =
   a.get('/recommendations', { config: { chakra: 'sheddable' } }, async (req) =>
     req.chakra?.degraded ? { items: [] } : { items: [1, 2, 3], priority: req.chakra?.priority },
   );
-  a.get('/search', { config: { chakra: { priority: 'sheddable', fallback: { status: 429, body: 'busy' } } } }, async () => 'ok');
+  a.get(
+    '/search',
+    { config: { chakra: { priority: 'sheddable', fallback: { status: 429, body: 'busy' } } } },
+    async () => 'ok',
+  );
   a.get('/boom', async () => {
     throw new Error('boom');
   });
   await a.register(async (child) => {
-    child.get('/users/:id', { config: { chakra: 'high' } }, async (req) => ({ priority: req.chakra?.priority }));
+    child.get('/users/:id', { config: { chakra: 'high' } }, async (req) => ({
+      priority: req.chakra?.priority,
+    }));
   });
   return { app: a, ...h };
 }
@@ -41,7 +47,9 @@ describe('Fastify adapter', () => {
   it('reads priority from route config in child plugins, keyed by pattern', async () => {
     const t = await app();
     expect((await t.app.inject('/users/42')).json()).toEqual({ priority: 'high' });
-    expect(t.table.match({ method: 'GET', path: '/x', route: '/users/:id', headers: {} })?.key).toBe('GET /users/:id');
+    expect(
+      t.table.match({ method: 'GET', path: '/x', route: '/users/:id', headers: {} })?.key,
+    ).toBe('GET /users/:id');
   });
 
   it('lets configured routes win over route config', async () => {
@@ -51,7 +59,10 @@ describe('Fastify adapter', () => {
 
   it('exposes request.chakra and the degraded flag', async () => {
     const t = await app();
-    expect((await t.app.inject('/recommendations')).json()).toEqual({ items: [1, 2, 3], priority: 'sheddable' });
+    expect((await t.app.inject('/recommendations')).json()).toEqual({
+      items: [1, 2, 3],
+      priority: 'sheddable',
+    });
     t.setDegraded(true);
     expect((await t.app.inject('/recommendations')).json()).toEqual({ items: [] });
   });
@@ -91,11 +102,17 @@ describe('Fastify adapter', () => {
 
   it('takes priority from request.user in preHandler mode, never from headers', async () => {
     const t = await app(
-      { priority: (ctx) => ((ctx.user as { plan?: string })?.plan === 'pro' ? 'critical' : undefined) },
+      {
+        priority: (ctx) =>
+          (ctx.user as { plan?: string })?.plan === 'pro' ? 'critical' : undefined,
+      },
       { hook: 'preHandler' },
     );
     t.capacity.sheddable = 0;
-    expect((await t.app.inject({ url: '/recommendations', headers: { 'x-user-tier': 'premium' } })).statusCode).toBe(503);
+    expect(
+      (await t.app.inject({ url: '/recommendations', headers: { 'x-user-tier': 'premium' } }))
+        .statusCode,
+    ).toBe(503);
     expect((await t.app.inject('/recommendations?plan=pro')).json().priority).toBe('critical');
   });
 });

@@ -33,13 +33,16 @@ interface Snapshot {
 
 const METHOD = /^(\*|[A-Z]+)$/;
 
-export function createRouteTable(routes: Record<string, Priority | RouteRuleInput> = {}): RouteTable {
+export function createRouteTable(
+  routes: Record<string, Priority | RouteRuleInput> = {},
+): RouteTable {
   const entries = new Map<string, Entry>();
   let snap: Snapshot = { byPattern: new Map(), dynamic: [] };
 
   function add(method: string, pattern: string, input: Priority | RouteRuleInput): void {
     const m = String(method).trim().toUpperCase();
-    if (!METHOD.test(m)) throw new Error(`chakra: invalid method "${method}" for route "${pattern}"`);
+    if (!METHOD.test(m))
+      throw new Error(`chakra: invalid method "${method}" for route "${pattern}"`);
     const p = normalise(pattern);
     const key = `${m} ${p}`;
     const rule = toRule(input, key);
@@ -51,7 +54,11 @@ export function createRouteTable(routes: Record<string, Priority | RouteRuleInpu
           '^' +
             segs
               .map((s, i) =>
-                s === '*' && i === segs.length - 1 ? '(?:/.*)?' : s.startsWith(':') ? '/[^/]+' : '/' + escape(s),
+                s === '*' && i === segs.length - 1
+                  ? '(?:/.*)?'
+                  : s.startsWith(':')
+                    ? '/[^/]+'
+                    : '/' + escape(s),
               )
               .join('') +
             '/?$',
@@ -65,7 +72,8 @@ export function createRouteTable(routes: Record<string, Priority | RouteRuleInpu
 
   for (const [raw, value] of Object.entries(routes)) {
     const parts = raw.trim().split(/\s+/);
-    if (parts.length > 2 || parts[parts.length - 1] === '') throw new Error(`chakra: malformed route key "${raw}"`);
+    if (parts.length > 2 || parts[parts.length - 1] === '')
+      throw new Error(`chakra: malformed route key "${raw}"`);
     add(parts.length === 2 ? parts[0] : '*', parts[parts.length - 1], value);
   }
 
@@ -76,7 +84,9 @@ export function createRouteTable(routes: Record<string, Priority | RouteRuleInpu
       const hit =
         (ctx.route !== undefined && pick(byPattern.get(ctx.route), method)) ||
         pick(byPattern.get(ctx.path), method) ||
-        (ctx.path.length > 1 && ctx.path.endsWith('/') && pick(byPattern.get(ctx.path.slice(0, -1)), method));
+        (ctx.path.length > 1 &&
+          ctx.path.endsWith('/') &&
+          pick(byPattern.get(ctx.path.slice(0, -1)), method));
       if (hit) return hit;
       for (const e of dynamic) {
         if ((e.method === method || e.method === '*') && e.re!.test(ctx.path)) return e.rule;
@@ -96,7 +106,10 @@ export function createRouteTable(routes: Record<string, Priority | RouteRuleInpu
   };
 }
 
-function pick(byMethod: ReadonlyMap<string, RouteRule> | undefined, method: string): RouteRule | undefined {
+function pick(
+  byMethod: ReadonlyMap<string, RouteRule> | undefined,
+  method: string,
+): RouteRule | undefined {
   return byMethod && (byMethod.get(method) ?? byMethod.get('*'));
 }
 

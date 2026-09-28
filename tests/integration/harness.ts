@@ -7,7 +7,12 @@ import { createRouteTable } from '../../src/priority';
 import type { Limiter, Priority, ReleaseOutcome } from '../../src/types';
 
 export function harness(options: ChakraOptions = {}) {
-  const capacity: Record<Priority, number> = { critical: 100, high: 100, normal: 100, sheddable: 100 };
+  const capacity: Record<Priority, number> = {
+    critical: 100,
+    high: 100,
+    normal: 100,
+    sheddable: 100,
+  };
   const inFlight: Record<Priority, number> = { critical: 0, high: 0, normal: 0, sheddable: 0 };
   const releases: ReleaseOutcome[] = [];
   let degraded = false;
@@ -25,13 +30,24 @@ export function harness(options: ChakraOptions = {}) {
       };
       return { admitted, degraded, token: { release } };
     },
-    snapshot: () => ({ limit: 100, inFlight: 0, pressure: 0.5, eventLoopDelayMs: 0, bandLimits: capacity }),
+    snapshot: () => ({
+      limit: 100,
+      inFlight: 0,
+      pressure: 0.5,
+      eventLoopDelayMs: 0,
+      bandLimits: capacity,
+    }),
     start() {},
     stop() {},
   };
   const resolved = resolveOptions({ logger: false, metrics: false, ...options }, {});
   const table = createRouteTable(resolved.routes);
-  const core = createAdmissionCore({ options: resolved, limiter, resolver: table, sink: { emit() {} } });
+  const core = createAdmissionCore({
+    options: resolved,
+    limiter,
+    resolver: table,
+    sink: { emit() {} },
+  });
   return {
     core,
     table,

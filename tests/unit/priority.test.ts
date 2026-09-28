@@ -63,7 +63,9 @@ describe('createRouteTable', () => {
     expect(() => createRouteTable({ 'GET /x': 'urgent' as never })).toThrow(/unknown priority/);
     expect(() => createRouteTable({ 'GET x': 'normal' })).toThrow(/must start with/);
     expect(() => createRouteTable({ 'GET /x extra': 'normal' })).toThrow(/malformed/);
-    expect(() => createRouteTable().add('G-T', '/x', { priority: 'normal' })).toThrow(/invalid method/);
+    expect(() => createRouteTable().add('G-T', '/x', { priority: 'normal' })).toThrow(
+      /invalid method/,
+    );
   });
 
   it('never throws from match()', () => {
@@ -91,6 +93,7 @@ describe('EMERGENCY_PRESETS', () => {
   it('never closes the critical band', () => {
     expect(EMERGENCY_PRESETS['restore-all'].closedBands).toEqual([]);
     expect(EMERGENCY_PRESETS['critical-only'].closedBands).toEqual(['high', 'normal', 'sheddable']);
-    for (const preset of Object.values(EMERGENCY_PRESETS)) expect(preset.closedBands).not.toContain('critical');
+    for (const preset of Object.values(EMERGENCY_PRESETS))
+      expect(preset.closedBands).not.toContain('critical');
   });
 });

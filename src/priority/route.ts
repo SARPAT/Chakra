@@ -36,7 +36,11 @@ export function route(priority: Priority, options: RouteOptions = {}): TaggedRou
   const rule: RouteRuleInput = Object.freeze(
     options.fallback ? { priority, fallback: options.fallback } : { priority },
   );
-  const handler = function chakraRoute(_req: unknown, _res: unknown, next: (err?: unknown) => void): void {
+  const handler = function chakraRoute(
+    _req: unknown,
+    _res: unknown,
+    next: (err?: unknown) => void,
+  ): void {
     next();
   };
   Object.defineProperty(handler, CHAKRA_ROUTE_TAG, { value: rule, enumerable: false });

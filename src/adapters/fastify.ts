@@ -9,7 +9,14 @@
 // hooks apply to routes in child plugins too. Fastify is only a type import.
 
 import type { FastifyInstance, FastifyPluginCallback, FastifyReply, FastifyRequest } from 'fastify';
-import type { AdmissionCore, AdmitDecision, ChakraRequestInfo, Priority, RouteRuleInput, RouteTable } from '../types';
+import type {
+  AdmissionCore,
+  AdmitDecision,
+  ChakraRequestInfo,
+  Priority,
+  RouteRuleInput,
+  RouteTable,
+} from '../types';
 import { addUnlessConfigured, serialiseShed } from './shared';
 
 declare module 'fastify' {
@@ -47,29 +54,33 @@ export function fastifyPlugin(
       const tag = route.config?.chakra;
       if (tag === undefined) return;
       const rule = typeof tag === 'string' ? { priority: tag } : tag;
-      for (const method of ([] as string[]).concat(route.method)) addUnlessConfigured(table, method, route.url, rule);
+      for (const method of ([] as string[]).concat(route.method))
+        addUnlessConfigured(table, method, route.url, rule);
     });
 
-    app.addHook(options.hook ?? 'onRequest', (request: FastifyRequest, reply: FastifyReply, next: () => void) => {
-      const url = request.url;
-      const q = url.indexOf('?');
-      const decision = core.decide({
-        method: request.method,
-        path: q < 0 ? url : url.slice(0, q),
-        route: request.routeOptions.url,
-        headers: request.headers,
-        user: (request as { user?: unknown }).user,
-        raw: request,
-      });
-      if (decision.outcome === 'shed') {
-        const s = serialiseShed(decision.response);
-        reply.code(s.status).headers(s.headers).send(s.body);
-        return;
-      }
-      request.chakra = decision.info;
-      (request as Req)[kDecision] = decision;
-      next();
-    });
+    app.addHook(
+      options.hook ?? 'onRequest',
+      (request: FastifyRequest, reply: FastifyReply, next: () => void) => {
+        const url = request.url;
+        const q = url.indexOf('?');
+        const decision = core.decide({
+          method: request.method,
+          path: q < 0 ? url : url.slice(0, q),
+          route: request.routeOptions.url,
+          headers: request.headers,
+          user: (request as { user?: unknown }).user,
+          raw: request,
+        });
+        if (decision.outcome === 'shed') {
+          const s = serialiseShed(decision.response);
+          reply.code(s.status).headers(s.headers).send(s.body);
+          return;
+        }
+        request.chakra = decision.info;
+        (request as Req)[kDecision] = decision;
+        next();
+      },
+    );
 
     app.addHook('onResponse', (request, reply, next) => {
       (request as Req)[kDecision]?.done(reply.statusCode, false);

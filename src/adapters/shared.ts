@@ -20,8 +20,15 @@ export function serialiseShed(r: ResolvedShedResponse): SerialisedShed {
     const hasType = Object.keys(r.headers).some((k) => k.toLowerCase() === 'content-type');
     const headers = hasType
       ? r.headers
-      : { ...r.headers, 'Content-Type': raw ? 'text/plain; charset=utf-8' : 'application/json; charset=utf-8' };
-    s = Object.freeze({ status: r.status, headers, body: raw ? (r.body as string | Buffer) : JSON.stringify(r.body) });
+      : {
+          ...r.headers,
+          'Content-Type': raw ? 'text/plain; charset=utf-8' : 'application/json; charset=utf-8',
+        };
+    s = Object.freeze({
+      status: r.status,
+      headers,
+      body: raw ? (r.body as string | Buffer) : JSON.stringify(r.body),
+    });
     cache.set(r, s);
   }
   return s;
@@ -31,7 +38,12 @@ export function serialiseShed(r: ResolvedShedResponse): SerialisedShed {
  * Add a route discovered from the framework, unless the developer configured a
  * rule for exactly this pattern: explicit config wins over annotations.
  */
-export function addUnlessConfigured(table: RouteTable, method: string, pattern: string, rule: RouteRuleInput): void {
+export function addUnlessConfigured(
+  table: RouteTable,
+  method: string,
+  pattern: string,
+  rule: RouteRuleInput,
+): void {
   const norm = pattern.length > 1 ? pattern.replace(/\/+$/, '') : pattern;
   const existing = table.match({ method, path: norm, route: norm, headers: {} });
   if (existing && existing.key.slice(existing.key.indexOf(' ') + 1) === norm) return;

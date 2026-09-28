@@ -17,15 +17,21 @@ function app(options: ChakraOptions = {}) {
   a.use(expressMiddleware(h.core, h.table));
   a.post('/checkout', route('critical'), (_req, res) => res.json({ ok: true }));
   a.get('/recommendations', route('sheddable'), (req, res) =>
-    res.json(req.chakra?.degraded ? { items: [] } : { items: [1, 2, 3], priority: req.chakra?.priority }),
+    res.json(
+      req.chakra?.degraded ? { items: [] } : { items: [1, 2, 3], priority: req.chakra?.priority },
+    ),
   );
-  a.get('/search', route('sheddable', { fallback: { status: 429, body: 'busy', retryAfterSeconds: 5 } }), (_q, s) =>
-    s.send('results'),
+  a.get(
+    '/search',
+    route('sheddable', { fallback: { status: 429, body: 'busy', retryAfterSeconds: 5 } }),
+    (_q, s) => s.send('results'),
   );
   a.get('/boom', (_req, res) => res.status(500).end());
   const api = express.Router();
   api.get('/orders/:id', route('high'), (req, res) => res.json({ priority: req.chakra?.priority }));
-  api.get('/pinned', route('sheddable'), (req, res) => res.json({ priority: req.chakra?.priority }));
+  api.get('/pinned', route('sheddable'), (req, res) =>
+    res.json({ priority: req.chakra?.priority }),
+  );
   a.use('/api', api);
   return { app: a, ...h };
 }
@@ -44,7 +50,9 @@ describe('Express adapter', () => {
   it('discovers route() tags, including in mounted routers with params', async () => {
     const t = app();
     expect((await request(t.app).get('/api/orders/7')).body).toEqual({ priority: 'high' });
-    expect(t.table.match({ method: 'GET', path: '/api/orders/9', headers: {} })?.key).toBe('GET /api/orders/:id');
+    expect(t.table.match({ method: 'GET', path: '/api/orders/9', headers: {} })?.key).toBe(
+      'GET /api/orders/:id',
+    );
   });
 
   it('lets configured routes win over route() tags', async () => {
@@ -54,7 +62,10 @@ describe('Express adapter', () => {
 
   it('exposes req.chakra so handlers can serve a lighter response', async () => {
     const t = app();
-    expect((await request(t.app).get('/recommendations')).body).toEqual({ items: [1, 2, 3], priority: 'sheddable' });
+    expect((await request(t.app).get('/recommendations')).body).toEqual({
+      items: [1, 2, 3],
+      priority: 'sheddable',
+    });
     t.setDegraded(true);
     expect((await request(t.app).get('/recommendations')).body).toEqual({ items: [] });
   });
@@ -94,9 +105,13 @@ describe('Express adapter', () => {
   });
 
   it('takes priority from req.user, never from client headers', async () => {
-    const t = app({ priority: (ctx) => ((ctx.user as { plan?: string })?.plan === 'pro' ? 'critical' : undefined) });
+    const t = app({
+      priority: (ctx) => ((ctx.user as { plan?: string })?.plan === 'pro' ? 'critical' : undefined),
+    });
     t.capacity.sheddable = 0;
-    expect((await request(t.app).get('/recommendations').set('X-User-Tier', 'premium')).status).toBe(503);
+    expect(
+      (await request(t.app).get('/recommendations').set('X-User-Tier', 'premium')).status,
+    ).toBe(503);
     expect((await request(t.app).get('/recommendations?plan=pro')).body.priority).toBe('critical');
   });
 
