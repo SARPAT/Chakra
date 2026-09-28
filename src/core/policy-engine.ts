@@ -110,6 +110,7 @@ function getCachedDayIndex(): number {
 // ─── Condition compilers ──────────────────────────────────────────────────────
 
 // Pre-built regex for glob placeholder replacement (global flag = replace all occurrences)
+// eslint-disable-next-line no-control-regex -- NUL delimits the ** placeholder
 const DOUBLE_STAR_RE = /\x00DS\x00/g;
 
 /** Compile a glob pattern string into a pre-built RegExp (done once at startup) */
