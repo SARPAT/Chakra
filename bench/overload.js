@@ -93,7 +93,13 @@ async function main() {
   for (const mode of MODES) results.push(await runMode(mode));
   return {
     framework: FRAMEWORK,
-    capacity: { pool: shop.POOL, serviceMs: shop.SERVICE_MS, cpuUs: shop.CPU_US, fixedCap: shop.CAP },
+    capacity: {
+      pool: shop.POOL,
+      serviceMs: shop.SERVICE_MS,
+      cpuUs: shop.CPU_US,
+      fixedCap: shop.CAP,
+      rps: Math.round((shop.POOL * 1000) / shop.SERVICE_MS / MIX.reduce((q, m) => q + m.weight * shop.QUERIES[m.path], 0)),
+    },
     phases: PHASES,
     mix: MIX,
     sloMs: SLO_MS,

@@ -48,4 +48,4 @@ async function handlerFor(path, chakra) {
   return { ok: true, path, degraded: Boolean(chakra?.degraded) };
 }
 
-module.exports = { POOL, SERVICE_MS, CPU_US, CAP, ROUTES, handlerFor };
+module.exports = { POOL, SERVICE_MS, CPU_US, CAP, ROUTES, QUERIES, handlerFor };
