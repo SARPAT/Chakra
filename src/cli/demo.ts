@@ -147,6 +147,7 @@ export async function runDemo(options: DemoOptions = {}): Promise<DemoSummary> {
   let status: Record<string, unknown> = {};
   const start = performance.now();
   let due = 0;
+  let stopped = false;
 
   const fire = (): void => {
     let x = Math.random();
@@ -155,6 +156,7 @@ export async function runDemo(options: DemoOptions = {}): Promise<DemoSummary> {
     const inSurge = phaseAt((performance.now() - start) / 1000).name === 'SURGE';
     const t0 = performance.now();
     const record = (code: number, degraded: boolean): void => {
+      if (stopped) return; // aborted by shutdown, not by the app
       for (const s of inSurge ? [window[i], surge[i]] : [window[i]]) {
         if (code === 200) {
           s.ok++;
@@ -189,6 +191,7 @@ export async function runDemo(options: DemoOptions = {}): Promise<DemoSummary> {
   clearInterval(load);
   clearInterval(poll);
   await new Promise((r) => setTimeout(r, 250)); // let in-flight responses land
+  stopped = true;
   agent.destroy();
   await server.close();
   write(summary(surge, mode, tty));
