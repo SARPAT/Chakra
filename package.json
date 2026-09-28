@@ -1,7 +1,7 @@
 {
   "name": "chakra-middleware",
   "version": "0.1.0",
-  "description": "Middleware framework for intelligent graceful degradation during traffic surges",
+  "description": "Priority-aware adaptive load shedding for Node.js: keeps critical routes alive when capacity runs short",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
@@ -13,24 +13,21 @@
   },
   "keywords": [
     "middleware",
+    "load-shedding",
+    "adaptive-concurrency",
+    "overload-protection",
     "graceful-degradation",
     "express",
-    "load-management"
+    "fastify"
   ],
   "license": "MIT",
   "dependencies": {
-    "better-sqlite3": "^11.0.0",
-    "express": "^4.21.0",
-    "js-yaml": "^4.1.0",
-    "ws": "^8.17.0"
+    "express": "^4.21.0"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.9",
     "@types/express": "^4.17.21",
-    "@types/js-yaml": "^4.0.9",
     "@types/node": "^20.11.0",
     "@types/supertest": "^7.2.0",
-    "@types/ws": "^8.5.10",
     "@typescript-eslint/eslint-plugin": "^7.0.0",
     "@typescript-eslint/parser": "^7.0.0",
     "eslint": "^8.57.0",
