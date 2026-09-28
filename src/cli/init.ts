@@ -82,3 +82,40 @@ ${body}
 };
 `;
 }
+
+/** The lines to add to the app, right after it is created. */
+export function setupSnippet(framework: Framework, esm = false): string {
+  const load = esm
+    ? "import { chakra } from 'chakra-middleware';\nimport config from './chakra.config.js';\nconst c = chakra(config);"
+    : "const { chakra } = require('chakra-middleware');\nconst c = chakra(require('./chakra.config'));";
+  const mount = framework === 'fastify' ? 'app.register(c.fastify);' : 'app.use(c);';
+  return `${load}\n${mount}\napp.get('/metrics', c.metricsHandler); // optional Prometheus endpoint`;
+}
+
+/** Write chakra.config.js into `dir`. Throws if it exists and `force` is not set. */
+export function runInit(options: InitOptions = {}): InitResult {
+  const dir = options.dir ?? process.cwd();
+  const file = join(dir, 'chakra.config.js');
+  if (existsSync(file) && !options.force) throw new Error(`${file} already exists (use --force to overwrite)`);
+  const pkg = readPackage(dir);
+  const deps = { ...pkg.dependencies, ...pkg.devDependencies };
+  const framework = options.framework ?? (deps.fastify && !deps.express ? 'fastify' : 'express');
+  const esm = pkg.type === 'module';
+  const routes = scanRoutes(dir);
+  writeFileSync(file, renderConfig(routes, esm));
+  return { file, framework, routes, snippet: setupSnippet(framework, esm) };
+}
+
+interface PackageJson {
+  type?: string;
+  dependencies?: Record<string, string>;
+  devDependencies?: Record<string, string>;
+}
+
+function readPackage(dir: string): PackageJson {
+  try {
+    return JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')) as PackageJson;
+  } catch {
+    return {};
+  }
+}
