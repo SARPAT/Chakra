@@ -5,7 +5,7 @@
 //   const c = chakra({ routes: { 'POST /checkout': 'critical', 'GET /recommendations': 'sheddable' } });
 //   app.get('/metrics', c.metricsHandler);
 //
-// The Express/Fastify adapters and adaptive limiter are wired in
+// The Express/Fastify adapters are wired in
 // here as their modules land; until then the stand-ins in src/core/defaults.ts are used.
 
 import type { IncomingMessage, ServerResponse } from 'node:http';
@@ -18,7 +18,8 @@ import {
 } from './types';
 import { resolveOptions, type ChakraOptions, type ResolvedOptions } from './config/schema';
 import { createAdmissionCore, type ControllableAdmissionCore } from './core/admission';
-import { admitAllLimiter, exactRouteResolver } from './core/defaults';
+import { exactRouteResolver } from './core/defaults';
+import { createLimiter } from './limiter';
 import { createPrometheusExporter } from './observability/prometheus';
 import { createDryRunReporter, type DryRunReport } from './observability/dry-run';
 import { createEventBus } from './observability/event-bus';
@@ -46,7 +47,7 @@ export function chakra(options: ChakraOptions = {}): ChakraInstance {
     resolved.mode === 'dry-run' ? createDryRunReporter(dryRunLog(resolved)) : undefined;
   const metrics = createMetricsSink(resolved);
   const sink = reporter ? createEventBus(metrics, reporter) : metrics;
-  const limiter: Limiter = admitAllLimiter();
+  const limiter: Limiter = createLimiter(resolved.limiter, sink);
   const resolver = exactRouteResolver(resolved.routes);
   const core = createAdmissionCore({ options: resolved, limiter, resolver, sink });
 
