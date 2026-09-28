@@ -5,7 +5,7 @@
 //   const c = chakra({ routes: { 'POST /checkout': 'critical', 'GET /recommendations': 'sheddable' } });
 //   app.get('/metrics', c.metricsHandler);
 //
-// The Express/Fastify adapters, adaptive limiter and Prometheus exporter are wired in
+// The Express/Fastify adapters and adaptive limiter are wired in
 // here as their modules land; until then the stand-ins in src/core/defaults.ts are used.
 
 import type { IncomingMessage, ServerResponse } from 'node:http';
@@ -19,6 +19,9 @@ import {
 import { resolveOptions, type ChakraOptions, type ResolvedOptions } from './config/schema';
 import { createAdmissionCore, type ControllableAdmissionCore } from './core/admission';
 import { admitAllLimiter, exactRouteResolver } from './core/defaults';
+import { createPrometheusExporter } from './observability/prometheus';
+import { createDryRunReporter, type DryRunReport } from './observability/dry-run';
+import { createEventBus } from './observability/event-bus';
 
 export interface ChakraInstance extends ControllableAdmissionCore {
   /** Options after defaults and `CHAKRA_MODE` are applied. */
@@ -27,6 +30,8 @@ export interface ChakraInstance extends ControllableAdmissionCore {
   snapshot(): LimiterSnapshot;
   /** Prometheus scrape handler, usable as `app.get('/metrics', c.metricsHandler)`. */
   metricsHandler(req: IncomingMessage, res: ServerResponse): void;
+  /** Dry-run mode only: what would have been shed or degraded, per route. */
+  dryRunReport(): DryRunReport | undefined;
   /** Stop background timers. Safe to call more than once. */
   close(): void;
 }
@@ -37,7 +42,10 @@ export interface ChakraInstance extends ControllableAdmissionCore {
  */
 export function chakra(options: ChakraOptions = {}): ChakraInstance {
   const resolved = resolveOptions(options);
-  const sink = createSink(resolved);
+  const reporter =
+    resolved.mode === 'dry-run' ? createDryRunReporter(dryRunLog(resolved)) : undefined;
+  const metrics = createMetricsSink(resolved);
+  const sink = reporter ? createEventBus(metrics, reporter) : metrics;
   const limiter: Limiter = admitAllLimiter();
   const resolver = exactRouteResolver(resolved.routes);
   const core = createAdmissionCore({ options: resolved, limiter, resolver, sink });
@@ -59,20 +67,26 @@ export function chakra(options: ChakraOptions = {}): ChakraInstance {
     setOverrides: core.setOverrides,
     getOverrides: core.getOverrides,
     snapshot: () => limiter.snapshot(),
-    metricsHandler: (_req, res) => serveMetrics(sink, res),
+    metricsHandler: (_req, res) => serveMetrics(metrics, res),
+    dryRunReport: () => reporter?.report(),
     close() {
       if (closed) return;
       closed = true;
       limiter.stop();
+      reporter?.flush();
     },
   };
 }
 
-function createSink(options: ResolvedOptions): ChakraEventSink {
+function createMetricsSink(options: ResolvedOptions): ChakraEventSink {
   if (options.metrics === false) return NOOP_SINK;
   if (isSink(options.metrics)) return options.metrics;
-  // Prometheus exporter is wired in when src/observability/ lands.
-  return NOOP_SINK;
+  return createPrometheusExporter(options.metrics);
+}
+
+function dryRunLog(options: ResolvedOptions): Parameters<typeof createDryRunReporter>[0] {
+  const logger = options.logger;
+  return { log: logger ? (line) => logger.info(`dry-run ${line}`) : () => {} };
 }
 
 function serveMetrics(sink: ChakraEventSink, res: ServerResponse): void {
@@ -94,13 +108,23 @@ function serveMetrics(sink: ChakraEventSink, res: ServerResponse): void {
 }
 
 function isSink(value: unknown): value is ChakraEventSink {
-  return typeof value === 'object' && value !== null && typeof (value as ChakraEventSink).emit === 'function';
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    typeof (value as ChakraEventSink).emit === 'function'
+  );
 }
 
 function isExporter(sink: ChakraEventSink): sink is MetricsExporter {
   return typeof (sink as MetricsExporter).render === 'function';
 }
 
-export { ChakraConfigError, type ChakraOptions, type MetricsOptions, type ResolvedOptions } from './config/schema';
+export {
+  ChakraConfigError,
+  type ChakraOptions,
+  type MetricsOptions,
+  type ResolvedOptions,
+} from './config/schema';
 export type { Overrides } from './core/admission';
+export type { DryRunReport, DryRunReporter } from './observability/dry-run';
 export * from './types';
