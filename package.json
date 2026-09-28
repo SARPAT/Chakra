@@ -9,7 +9,8 @@
     "build": "tsc",
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint": "eslint src/ tests/"
+    "lint": "eslint src/ tests/",
+    "bench": "npm run build && npm --prefix bench ci --no-audit --no-fund && node bench/run.js"
   },
   "keywords": [
     "middleware",
