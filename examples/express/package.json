@@ -1,0 +1,11 @@
+{
+  "name": "chakra-example-express",
+  "private": true,
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "chakra-middleware": "file:../..",
+    "express": "^4.21.0"
+  }
+}
