@@ -113,3 +113,22 @@ describe('default observability', () => {
     c.close();
   });
 });
+
+describe('adaptive limiter wiring', () => {
+  it('sheds sheddable requests once the limit is saturated while critical ones get through', () => {
+    const c = chakra({
+      logger: false,
+      metrics: false,
+      routes: { 'GET /recs': 'sheddable', 'POST /pay': 'critical' },
+      limiter: { initialLimit: 4, minLimit: 4, maxLimit: 4 },
+    });
+    const held = Array.from({ length: 2 }, () =>
+      c.decide({ method: 'GET', path: '/recs', headers: {} }),
+    );
+    expect(held.every((d) => d.outcome === 'admit')).toBe(true);
+    expect(c.decide({ method: 'GET', path: '/recs', headers: {} }).outcome).toBe('shed');
+    expect(c.decide({ method: 'POST', path: '/pay', headers: {} }).outcome).toBe('admit');
+    expect(c.snapshot().limit).toBe(4);
+    c.close();
+  });
+});
