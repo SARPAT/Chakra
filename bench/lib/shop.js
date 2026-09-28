@@ -31,7 +31,8 @@ function query() {
         if (waiting.length) waiting.shift()();
       }, SERVICE_MS);
     };
-    busy < POOL ? run() : waiting.push(run);
+    if (busy < POOL) run();
+    else waiting.push(run);
   });
 }
 

@@ -18,7 +18,10 @@ const VARIANTS = [
 
 const cannon = (url, duration) =>
   new Promise((resolve, reject) =>
-    autocannon({ url, connections: CONNECTIONS, duration, pipelining: 1 }, (err, r) => (err ? reject(err) : resolve(r))));
+    autocannon({ url, connections: CONNECTIONS, duration, pipelining: 1 }, (err, r) =>
+      err ? reject(err) : resolve(r),
+    ),
+  );
 
 async function runVariant([framework, protection]) {
   const server = await startServer([framework, protection, 'hello']);
@@ -26,8 +29,16 @@ async function runVariant([framework, protection]) {
     const url = `http://127.0.0.1:${server.port}/hello`;
     await cannon(url, 3); // warm-up
     const r = await cannon(url, DURATION);
-    if (r.non2xx || r.errors) throw new Error(`${framework}+${protection}: ${r.non2xx} non-2xx, ${r.errors} errors`);
-    return { framework, protection, adapter: server.adapter, rps: r.requests.average, p50: r.latency.p50, p99: r.latency.p99 };
+    if (r.non2xx || r.errors)
+      throw new Error(`${framework}+${protection}: ${r.non2xx} non-2xx, ${r.errors} errors`);
+    return {
+      framework,
+      protection,
+      adapter: server.adapter,
+      rps: r.requests.average,
+      p50: r.latency.p50,
+      p99: r.latency.p99,
+    };
   } finally {
     await server.stop();
   }
@@ -49,12 +60,15 @@ async function main() {
 }
 
 if (require.main === module) {
-  main().then((out) => {
-    console.table(out.results);
-    if (process.env.BENCH_JSON) console.log(JSON.stringify(out));
-  }, (err) => {
-    console.error(err);
-    process.exit(1);
-  });
+  main().then(
+    (out) => {
+      console.table(out.results);
+      if (process.env.BENCH_JSON) console.log(JSON.stringify(out));
+    },
+    (err) => {
+      console.error(err);
+      process.exit(1);
+    },
+  );
 }
 module.exports = { main };

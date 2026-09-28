@@ -42,7 +42,11 @@ function micro() {
 }
 
 const table = (headers, rows) =>
-  [`| ${headers.join(' | ')} |`, `|${headers.map(() => '---').join('|')}|`, ...rows.map((r) => `| ${r.join(' | ')} |`)].join('\n');
+  [
+    `| ${headers.join(' | ')} |`,
+    `|${headers.map(() => '---').join('|')}|`,
+    ...rows.map((r) => `| ${r.join(' | ')} |`),
+  ].join('\n');
 const ms = (x) => (x === null || x === undefined ? 'n/a' : `${x} ms`);
 
 function markdown(r) {
@@ -62,8 +66,10 @@ function markdown(r) {
       '',
       `\`node ${MICRO_FLAGS.join(' ')} bench/micro.js\`, ${r.micro.iterations.toLocaleString('en')} iterations × ${r.micro.runs} runs, median. Limiter: ${r.micro.limiter}.`,
       '',
-      table(['Path', 'ns/request (median)', 'ns/request (best)', 'heap bytes/request'],
-        r.micro.results.map((x) => [x.name, x.nsPerOp, x.nsMin, x.bytesPerOp])),
+      table(
+        ['Path', 'ns/request (median)', 'ns/request (best)', 'heap bytes/request'],
+        r.micro.results.map((x) => [x.name, x.nsPerOp, x.nsMin, x.bytesPerOp]),
+      ),
       '',
     );
   }
@@ -74,9 +80,17 @@ function markdown(r) {
       '',
       `\`node bench/overhead.js\`: autocannon, ${o.connections} connections, ${o.duration} s per run after a 3 s warm-up, median of ${o.rounds} interleaved rounds, \`GET /hello\` returning a small JSON body. Every request is admitted.`,
       '',
-      table(['Framework', 'CHAKRA', 'req/s', 'Δ req/s', 'p50', 'p99'],
-        o.results.map((x) => [x.framework, x.protection === 'none' ? 'off' : `on (${x.adapter} adapter)`,
-          Math.round(x.rps).toLocaleString('en'), x.rpsDelta || '—', ms(x.p50), ms(x.p99)])),
+      table(
+        ['Framework', 'CHAKRA', 'req/s', 'Δ req/s', 'p50', 'p99'],
+        o.results.map((x) => [
+          x.framework,
+          x.protection === 'none' ? 'off' : `on (${x.adapter} adapter)`,
+          Math.round(x.rps).toLocaleString('en'),
+          x.rpsDelta || '—',
+          ms(x.p50),
+          ms(x.p99),
+        ]),
+      ),
       '',
     );
   }
@@ -95,12 +109,32 @@ function markdown(r) {
       '',
       'Figures are for requests sent during the spike.',
       '',
-      table(['Protection', 'critical success', 'critical p50', 'critical p99', 'normal success', 'sheddable success', 'goodput (2xx/s)', `time to critical p99 ≤ ${o.sloMs} ms`],
+      table(
+        [
+          'Protection',
+          'critical success',
+          'critical p50',
+          'critical p99',
+          'normal success',
+          'sheddable success',
+          'goodput (2xx/s)',
+          `time to critical p99 ≤ ${o.sloMs} ms`,
+        ],
         o.results.map((x) => [
-          x.mode === 'none' ? 'none' : x.mode === 'cap' ? `fixed cap (${o.capacity.fixedCap})` : `CHAKRA (${x.adapter} adapter)`,
-          `${x.criticalSuccess}%`, ms(x.criticalP50), ms(x.criticalP99), `${x.normalSuccess}%`, `${x.sheddableSuccess}%`,
-          x.goodputRps, x.reactionMs === null ? 'never' : ms(x.reactionMs),
-        ])),
+          x.mode === 'none'
+            ? 'none'
+            : x.mode === 'cap'
+              ? `fixed cap (${o.capacity.fixedCap})`
+              : `CHAKRA (${x.adapter} adapter)`,
+          `${x.criticalSuccess}%`,
+          ms(x.criticalP50),
+          ms(x.criticalP99),
+          `${x.normalSuccess}%`,
+          `${x.sheddableSuccess}%`,
+          x.goodputRps,
+          x.reactionMs === null ? 'never' : ms(x.reactionMs),
+        ]),
+      ),
       '',
       `Critical p99 before the spike: ${o.results.map((x) => `${x.mode} ${ms(x.criticalBaselineP99)}`).join(', ')}.`,
       '',

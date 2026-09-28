@@ -18,7 +18,12 @@ function measure(name, fn) {
     ns.push(Number(process.hrtime.bigint() - t0) / ITER);
   }
   ns.sort((a, b) => a - b);
-  return { name, nsPerOp: +ns[RUNS >> 1].toFixed(1), nsMin: +ns[0].toFixed(1), bytesPerOp: allocated(fn) };
+  return {
+    name,
+    nsPerOp: +ns[RUNS >> 1].toFixed(1),
+    nsMin: +ns[0].toFixed(1),
+    bytesPerOp: allocated(fn),
+  };
 }
 
 // Heap bytes per call. Only exact when the young generation holds the whole pass
@@ -31,7 +36,11 @@ function allocated(fn, n = 50_000) {
 }
 
 function main() {
-  const routes = { 'POST /checkout': 'critical', 'GET /browse': 'normal', 'GET /recommendations': 'sheddable' };
+  const routes = {
+    'POST /checkout': 'critical',
+    'GET /browse': 'normal',
+    'GET /recommendations': 'sheddable',
+  };
   const ctxs = [
     { method: 'POST', path: '/checkout', headers: {} },
     { method: 'GET', path: '/browse', headers: {} },
@@ -46,20 +55,30 @@ function main() {
     ['decide+done (dry-run)', { mode: 'dry-run' }],
   ]) {
     const c = lib.chakra({ routes, logger: false, ...opts });
-    results.push(measure(label, (i) => {
-      const d = (keep[i & 1023] = c.decide(ctxs[i & 3])); // escapes, as it does in an adapter
-      if (d.outcome === 'admit') d.done(200);
-    }));
+    results.push(
+      measure(label, (i) => {
+        const d = (keep[i & 1023] = c.decide(ctxs[i & 3])); // escapes, as it does in an adapter
+        if (d.outcome === 'admit') d.done(200);
+      }),
+    );
     c.close();
   }
   if (typeof lib.createLimiter === 'function') {
     const l = lib.createLimiter({});
     const bands = ['critical', 'high', 'normal', 'sheddable'];
-    results.push(measure('limiter acquire+release', (i) => l.acquire(bands[i & 3]).token?.release('success')));
+    results.push(
+      measure('limiter acquire+release', (i) => l.acquire(bands[i & 3]).token?.release('success')),
+    );
     l.stop();
   }
   const limiter = typeof lib.createLimiter === 'function' ? 'adaptive' : 'admit-all stand-in';
-  return { iterations: ITER, runs: RUNS, limiter, gcExposed: typeof global.gc === 'function', results };
+  return {
+    iterations: ITER,
+    runs: RUNS,
+    limiter,
+    gcExposed: typeof global.gc === 'function',
+    results,
+  };
 }
 
 if (require.main === module) {

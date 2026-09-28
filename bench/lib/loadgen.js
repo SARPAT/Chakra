@@ -24,7 +24,7 @@ function run({ port, phases, mix, timeoutMs }) {
 
   // Deterministic route sequence so every protection mode sees the same traffic.
   let seed = 42;
-  const random = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+  const random = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
 
   return new Promise((resolve) => {
     let sent = 0;
@@ -49,11 +49,14 @@ function run({ port, phases, mix, timeoutMs }) {
     const send = (i) => {
       const m = mix[(route[i] = pick(random()))];
       sentAt[i] = performance.now() - t0;
-      const req = http.request({ agent, host: '127.0.0.1', port, method: m.method, path: m.path }, (res) => {
-        res.resume();
-        res.once('end', () => record(i, res.statusCode));
-        res.once('error', () => record(i, 0));
-      });
+      const req = http.request(
+        { agent, host: '127.0.0.1', port, method: m.method, path: m.path },
+        (res) => {
+          res.resume();
+          res.once('end', () => record(i, res.statusCode));
+          res.once('error', () => record(i, 0));
+        },
+      );
       req.setTimeout(timeoutMs, () => (record(i, 0), req.destroy()));
       req.once('error', () => record(i, 0));
       req.end();

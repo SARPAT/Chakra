@@ -18,7 +18,9 @@ function capGate() {
   let inFlight = 0;
   return (res) => {
     if (inFlight >= CAP) {
-      res.writeHead(503, { 'content-type': 'application/json', 'retry-after': '1' }).end('{"error":"overloaded"}');
+      res
+        .writeHead(503, { 'content-type': 'application/json', 'retry-after': '1' })
+        .end('{"error":"overloaded"}');
       return false;
     }
     inFlight++;
@@ -41,7 +43,8 @@ async function main() {
     for (const key of Object.keys(routes)) {
       const [method, path] = key.split(' ');
       app[method.toLowerCase()](path, (req, res, next) =>
-        handle(path, req.chakra).then((body) => res.json(body), next));
+        handle(path, req.chakra).then((body) => res.json(body), next),
+      );
     }
     const server = app.listen(0, '127.0.0.1', () => ready(server.address().port, adapter));
     server.keepAliveTimeout = 60_000;

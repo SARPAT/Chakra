@@ -31,7 +31,8 @@ const MIX = [
 const SPIKE_START = (PHASES[0].seconds + PHASES[1].seconds) * 1000;
 const SPIKE_END = SPIKE_START + SPIKE_S * 1000;
 
-const pct = (sorted, p) => (sorted.length ? sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * p))] : NaN);
+const pct = (sorted, p) =>
+  sorted.length ? sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * p))] : NaN;
 const round = (x, d = 1) => (Number.isFinite(x) ? +x.toFixed(d) : null);
 
 /** Success rate and latency of one route over [from, to), by send time. */
@@ -44,7 +45,13 @@ function window(rec, r, from, to) {
     if (rec.status[i] >= 200 && rec.status[i] < 300) ok.push(rec.latency[i]);
   }
   ok.sort((a, b) => a - b);
-  return { n, ok: ok.length, successRate: n ? ok.length / n : NaN, p50: pct(ok, 0.5), p99: pct(ok, 0.99) };
+  return {
+    n,
+    ok: ok.length,
+    successRate: n ? ok.length / n : NaN,
+    p50: pct(ok, 0.5),
+    p99: pct(ok, 0.99),
+  };
 }
 
 /**
@@ -66,8 +73,17 @@ function reactionMs(rec) {
 async function runMode(mode) {
   const server = await startServer([FRAMEWORK, mode, 'shop']);
   try {
-    const rec = await loadgen.run({ port: server.port, phases: PHASES, mix: MIX, timeoutMs: TIMEOUT_MS });
-    const spike = MIX.map((m, r) => ({ route: `${m.method} ${m.path}`, priority: m.priority, ...window(rec, r, SPIKE_START, SPIKE_END) }));
+    const rec = await loadgen.run({
+      port: server.port,
+      phases: PHASES,
+      mix: MIX,
+      timeoutMs: TIMEOUT_MS,
+    });
+    const spike = MIX.map((m, r) => ({
+      route: `${m.method} ${m.path}`,
+      priority: m.priority,
+      ...window(rec, r, SPIKE_START, SPIKE_END),
+    }));
     const base = window(rec, 0, PHASES[0].seconds * 1000, SPIKE_START);
     const goodput = spike.reduce((n, s) => n + s.ok, 0) / SPIKE_S;
     return {
@@ -81,7 +97,12 @@ async function runMode(mode) {
       sheddableSuccess: round(spike[2].successRate * 100),
       goodputRps: round(goodput, 0),
       reactionMs: reactionMs(rec),
-      routes: spike.map((s) => ({ ...s, successRate: round(s.successRate * 100), p50: round(s.p50), p99: round(s.p99) })),
+      routes: spike.map((s) => ({
+        ...s,
+        successRate: round(s.successRate * 100),
+        p50: round(s.p50),
+        p99: round(s.p99),
+      })),
     };
   } finally {
     await server.stop();
@@ -98,7 +119,11 @@ async function main() {
       serviceMs: shop.SERVICE_MS,
       cpuUs: shop.CPU_US,
       fixedCap: shop.CAP,
-      rps: Math.round((shop.POOL * 1000) / shop.SERVICE_MS / MIX.reduce((q, m) => q + m.weight * shop.QUERIES[m.path], 0)),
+      rps: Math.round(
+        (shop.POOL * 1000) /
+          shop.SERVICE_MS /
+          MIX.reduce((q, m) => q + m.weight * shop.QUERIES[m.path], 0),
+      ),
     },
     phases: PHASES,
     mix: MIX,
@@ -109,12 +134,15 @@ async function main() {
 }
 
 if (require.main === module) {
-  main().then((out) => {
-    console.table(out.results.map(({ routes, ...r }) => r));
-    if (process.env.BENCH_JSON) console.log(JSON.stringify(out));
-  }, (err) => {
-    console.error(err);
-    process.exit(1);
-  });
+  main().then(
+    (out) => {
+      console.table(out.results.map(({ routes: _routes, ...r }) => r));
+      if (process.env.BENCH_JSON) console.log(JSON.stringify(out));
+    },
+    (err) => {
+      console.error(err);
+      process.exit(1);
+    },
+  );
 }
 module.exports = { main };
