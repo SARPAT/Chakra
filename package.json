@@ -4,12 +4,31 @@
   "description": "Middleware framework for intelligent graceful degradation during traffic surges",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "!dist/**/*.map"
+  ],
+  "engines": {
+    "node": ">=18.18"
+  },
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc",
+    "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
+    "build": "npm run clean && tsc && node scripts/copy-assets.mjs",
+    "typecheck": "tsc -p tsconfig.test.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint": "eslint src/ tests/"
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "prepublishOnly": "npm run typecheck && npm run lint && npm test && npm run build"
   },
   "keywords": [
     "middleware",
@@ -17,7 +36,15 @@
     "express",
     "load-management"
   ],
-  "license": "MIT",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SARPAT/Chakra.git"
+  },
+  "bugs": {
+    "url": "https://github.com/SARPAT/Chakra/issues"
+  },
+  "homepage": "https://github.com/SARPAT/Chakra#readme",
   "dependencies": {
     "better-sqlite3": "^11.0.0",
     "express": "^4.21.0",
