@@ -26,7 +26,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ['tests/**/*.ts'],
+    files: ['tests/**/*.ts', 'dev-server.ts'],
     languageOptions: {
       globals: { ...globals.node, ...globals.vitest },
     },
@@ -34,6 +34,7 @@ export default tseslint.config(
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-non-null-assertion': 'off',
       '@typescript-eslint/no-unused-vars': 'warn',
+      'no-empty': ['error', { allowEmptyCatch: true }],
     },
   },
   prettier,
