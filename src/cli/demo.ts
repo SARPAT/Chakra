@@ -13,7 +13,13 @@ export const DEMO_ROUTES = [
   { method: 'POST', path: '/checkout', priority: 'critical', serviceMs: 15, share: 0.1 },
   { method: 'GET', path: '/products', priority: 'normal', serviceMs: 20, share: 0.5 },
   { method: 'GET', path: '/recommendations', priority: 'sheddable', serviceMs: 40, share: 0.4 },
-] as const satisfies readonly { method: string; path: string; priority: Priority; serviceMs: number; share: number }[];
+] as const satisfies readonly {
+  method: string;
+  path: string;
+  priority: Priority;
+  serviceMs: number;
+  share: number;
+}[];
 
 const POOL_SIZE = 8;
 
@@ -37,7 +43,8 @@ export function startDemoServer(port = 0, mode?: Mode): Promise<DemoServer> {
     if (!route) return send(res, 404, { error: 'not found' });
 
     const d = c.decide({ method: req.method ?? 'GET', path, headers: req.headers, raw: req });
-    if (d.outcome === 'shed') return send(res, d.response.status, d.response.body, d.response.headers);
+    if (d.outcome === 'shed')
+      return send(res, d.response.status, d.response.body, d.response.headers);
     res.once('close', () => d.done(res.statusCode, !res.writableFinished));
     burn(0.2); // request parsing, auth, serialisation
     // A degraded request skips the expensive part (e.g. personalisation).
@@ -50,7 +57,12 @@ export function startDemoServer(port = 0, mode?: Mode): Promise<DemoServer> {
     server.listen(port, '127.0.0.1', () =>
       resolve({
         port: (server.address() as { port: number }).port,
-        close: () => new Promise((r) => { c.close(); server.closeAllConnections(); server.close(() => r()); }),
+        close: () =>
+          new Promise((r) => {
+            c.close();
+            server.closeAllConnections();
+            server.close(() => r());
+          }),
       }),
     ),
   );
@@ -141,7 +153,15 @@ export async function runDemo(options: DemoOptions = {}): Promise<DemoSummary> {
     { name: 'recovery', until: seconds, rps: surgeRps / 5 },
   ];
   const blank = (): RouteStats[] =>
-    DEMO_ROUTES.map((r) => ({ route: `${r.method} ${r.path}`, priority: r.priority, ok: 0, shed: 0, failed: 0, degraded: 0, latencies: [] }));
+    DEMO_ROUTES.map((r) => ({
+      route: `${r.method} ${r.path}`,
+      priority: r.priority,
+      ok: 0,
+      shed: 0,
+      failed: 0,
+      degraded: 0,
+      latencies: [],
+    }));
   const surge = blank();
   let window = blank();
   let status: Record<string, unknown> = {};
@@ -151,7 +171,10 @@ export async function runDemo(options: DemoOptions = {}): Promise<DemoSummary> {
 
   const fire = (): void => {
     let x = Math.random();
-    const i = Math.max(0, DEMO_ROUTES.findIndex((r) => (x -= r.share) < 0));
+    const i = Math.max(
+      0,
+      DEMO_ROUTES.findIndex((r) => (x -= r.share) < 0),
+    );
     const r = DEMO_ROUTES[i];
     const inSurge = phaseAt((performance.now() - start) / 1000).name === 'SURGE';
     const t0 = performance.now();
@@ -166,10 +189,20 @@ export async function runDemo(options: DemoOptions = {}): Promise<DemoSummary> {
         else s.failed++;
       }
     };
-    const req = request({ host: '127.0.0.1', port: server.port, method: r.method, path: r.path, agent, timeout: TIMEOUT_MS }, (res) => {
-      res.resume();
-      res.on('end', () => record(res.statusCode ?? 0, res.headers['x-chakra-degraded'] === '1'));
-    });
+    const req = request(
+      {
+        host: '127.0.0.1',
+        port: server.port,
+        method: r.method,
+        path: r.path,
+        agent,
+        timeout: TIMEOUT_MS,
+      },
+      (res) => {
+        res.resume();
+        res.on('end', () => record(res.statusCode ?? 0, res.headers['x-chakra-degraded'] === '1'));
+      },
+    );
     req.on('timeout', () => req.destroy());
     req.on('error', () => record(0, false));
     req.end();
@@ -182,7 +215,10 @@ export async function runDemo(options: DemoOptions = {}): Promise<DemoSummary> {
   }, 20);
   const poll = setInterval(() => {
     const t = (performance.now() - start) / 1000;
-    getJson(server.port, agent).then((s) => (status = s), () => {});
+    getJson(server.port, agent).then(
+      (s) => (status = s),
+      () => {},
+    );
     write(view(window, status, phaseAt(t), t, seconds, mode, tty));
     window = blank();
   }, 1000);
@@ -243,16 +279,20 @@ function view(
   tty: boolean,
 ): string {
   const [bold, green, yellow, red] = [1, 32, 33, 31].map((c) => paint(tty, c));
-  const num = (v: unknown, digits = 0) => (typeof v === 'number' && Number.isFinite(v) ? v.toFixed(digits) : '-');
-  const lat = (ms: number) => (ms < 100 ? green : ms < 1000 ? yellow : red)(`${ms.toFixed(0)} ms`.padStart(8));
+  const num = (v: unknown, digits = 0) =>
+    typeof v === 'number' && Number.isFinite(v) ? v.toFixed(digits) : '-';
+  const lat = (ms: number) =>
+    (ms < 100 ? green : ms < 1000 ? yellow : red)(`${ms.toFixed(0)} ms`.padStart(8));
   const lines = [
     `${bold('CHAKRA demo')}  mode ${mode}  ${t.toFixed(0)}s/${total}s  ` +
       (phase.name === 'SURGE' ? red : green)(`${phase.name} ${phase.rps} req/s`),
     `limit ${num(status.limit)}  in-flight ${num(status.inFlight)}  pressure ${num(status.pressure, 2)}  ` +
       `event-loop p99 ${num(status.eventLoopDelayMs, 1)} ms`,
     '',
-    bold(`${'route'.padEnd(22)}${'priority'.padEnd(11)}${'ok/s'.padStart(6)}${'shed/s'.padStart(8)}` +
-      `${'failed/s'.padStart(10)}${'degraded'.padStart(10)}${'p95'.padStart(9)}`),
+    bold(
+      `${'route'.padEnd(22)}${'priority'.padEnd(11)}${'ok/s'.padStart(6)}${'shed/s'.padStart(8)}` +
+        `${'failed/s'.padStart(10)}${'degraded'.padStart(10)}${'p95'.padStart(9)}`,
+    ),
     ...stats.map(
       (s) =>
         `${s.route.padEnd(22)}${s.priority.padEnd(11)}${String(s.ok).padStart(6)}` +

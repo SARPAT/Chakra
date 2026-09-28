@@ -4,7 +4,13 @@ import { runDemo, startDemoServer } from '../../src/cli/demo';
 describe('chakra demo', () => {
   it('runs a short surge and prints the live view and summary', async () => {
     let out = '';
-    const summary = await runDemo({ seconds: 3, rps: 150, inProcess: true, tty: false, write: (t) => (out += t) });
+    const summary = await runDemo({
+      seconds: 3,
+      rps: 150,
+      inProcess: true,
+      tty: false,
+      write: (t) => (out += t),
+    });
     expect(out).toContain('CHAKRA demo');
     expect(out).toContain('POST /checkout');
     expect(out).toContain('During the surge (mode enforce)');

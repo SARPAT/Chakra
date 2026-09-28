@@ -29,8 +29,10 @@ export interface InitResult {
 const SKIP_DIRS = new Set(['node_modules', 'dist', 'build', 'coverage', '.git', '.next', 'out']);
 const SOURCE = /\.(?:[cm]?js|[cm]?ts)$/;
 const ROUTE = /\b\w+\.(get|post|put|patch|delete)\(\s*(['"`])(\/[^'"`\s$]*)\2/gi;
-const CRITICAL = /checkout|payment|\/pay\b|billing|order|login|logout|sign-?in|sign-?up|auth|token|health|ready|live/i;
-const SHEDDABLE = /recommend|suggest|related|trending|popular|analytics|track|telemetry|report|export|feed|preview/i;
+const CRITICAL =
+  /checkout|payment|\/pay\b|billing|order|login|logout|sign-?in|sign-?up|auth|token|health|ready|live/i;
+const SHEDDABLE =
+  /recommend|suggest|related|trending|popular|analytics|track|telemetry|report|export|feed|preview/i;
 const MAX_FILES = 2000;
 const MAX_BYTES = 512 * 1024;
 
@@ -96,7 +98,8 @@ export function setupSnippet(framework: Framework, esm = false): string {
 export function runInit(options: InitOptions = {}): InitResult {
   const dir = options.dir ?? process.cwd();
   const file = join(dir, 'chakra.config.js');
-  if (existsSync(file) && !options.force) throw new Error(`${file} already exists (use --force to overwrite)`);
+  if (existsSync(file) && !options.force)
+    throw new Error(`${file} already exists (use --force to overwrite)`);
   const pkg = readPackage(dir);
   const deps = { ...pkg.dependencies, ...pkg.devDependencies };
   const framework = options.framework ?? (deps.fastify && !deps.express ? 'fastify' : 'express');

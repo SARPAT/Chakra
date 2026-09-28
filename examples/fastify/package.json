@@ -1,6 +1,11 @@
 {
   "name": "chakra-example-fastify",
   "private": true,
-  "scripts": { "start": "node server.js" },
-  "dependencies": { "chakra-middleware": "file:../..", "fastify": "^4.28.0" }
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "chakra-middleware": "file:../..",
+    "fastify": "^4.28.0"
+  }
 }

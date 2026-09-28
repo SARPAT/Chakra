@@ -25,15 +25,25 @@ export async function main(argv: readonly string[]): Promise<number> {
   };
   switch (command) {
     case 'init': {
-      const framework: Framework | undefined = flag('fastify') ? 'fastify' : flag('express') ? 'express' : undefined;
+      const framework: Framework | undefined = flag('fastify')
+        ? 'fastify'
+        : flag('express')
+          ? 'express'
+          : undefined;
       const r = runInit({ force: flag('force'), framework });
       const n = Object.keys(r.routes).length;
-      console.log(`Wrote ${r.file} with ${n} route${n === 1 ? '' : 's'}. Review the priorities, then add to your ${r.framework} app:\n`);
+      console.log(
+        `Wrote ${r.file} with ${n} route${n === 1 ? '' : 's'}. Review the priorities, then add to your ${r.framework} app:\n`,
+      );
       console.log(`${r.snippet.replace(/^/gm, '  ')}\n`);
       return 0;
     }
     case 'demo':
-      await runDemo({ seconds: value('seconds'), rps: value('rps'), mode: flag('off') ? 'off' : 'enforce' });
+      await runDemo({
+        seconds: value('seconds'),
+        rps: value('rps'),
+        mode: flag('off') ? 'off' : 'enforce',
+      });
       return 0;
     case '__demo-server': {
       const { port } = await startDemoServer();

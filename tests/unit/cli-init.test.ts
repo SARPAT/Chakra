@@ -61,7 +61,10 @@ describe('runInit', () => {
   });
 
   it('detects Fastify and ESM projects', () => {
-    writeFileSync(join(dir, 'package.json'), JSON.stringify({ type: 'module', dependencies: { fastify: '^4' } }));
+    writeFileSync(
+      join(dir, 'package.json'),
+      JSON.stringify({ type: 'module', dependencies: { fastify: '^4' } }),
+    );
     const r = runInit({ dir });
     expect(r.framework).toBe('fastify');
     expect(r.snippet).toContain("import config from './chakra.config.js'");
