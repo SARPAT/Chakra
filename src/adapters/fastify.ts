@@ -8,6 +8,7 @@
 // matched pattern is known per request. The plugin skips encapsulation, so its
 // hooks apply to routes in child plugins too. Fastify is only a type import.
 
+import type { ServerResponse } from 'node:http';
 import type { FastifyInstance, FastifyPluginCallback, FastifyReply, FastifyRequest } from 'fastify';
 import type {
   AdmissionCore,
@@ -39,7 +40,34 @@ export interface FastifyAdapterOptions {
 }
 
 const kDecision = Symbol('chakra.decision');
-type Req = FastifyRequest & { [kDecision]: AdmitDecision | null };
+type Res = ServerResponse & { [kDecision]?: AdmitDecision };
+
+/** Shared 'close' listener: no closure per request. 'close' also fires after a normal finish. */
+function onClose(this: Res): void {
+  this[kDecision]!.done(this.statusCode, !this.writableEnded);
+}
+
+interface RouteConfig {
+  url?: string;
+  method?: string | string[];
+  chakra?: Priority | RouteRuleInput;
+}
+
+// `request.routeOptions` builds a new object with getters on every access, which
+// costs a few µs per request. The route's config object (with its url and method)
+// sits on Fastify's own route context, so read it directly, found once by the
+// symbol's description, and fall back to the public getter if it is ever missing.
+let kContext: symbol | null | undefined;
+function routeConfig(request: FastifyRequest): RouteConfig | undefined {
+  if (kContext === undefined) {
+    kContext =
+      Object.getOwnPropertySymbols(request).find((s) => s.description === 'fastify.context') ??
+      null;
+  }
+  const context =
+    kContext && (request as unknown as Record<symbol, { config?: RouteConfig }>)[kContext];
+  return context ? context.config : (request.routeOptions.config as RouteConfig | undefined);
+}
 
 export function fastifyPlugin(
   core: AdmissionCore,
@@ -48,34 +76,33 @@ export function fastifyPlugin(
 ): FastifyPluginCallback {
   const plugin: FastifyPluginCallback = (app: FastifyInstance, _opts, done) => {
     app.decorateRequest('chakra', null);
-    app.decorateRequest(kDecision, null);
 
-    app.addHook('onRoute', (route) => {
-      const tag = route.config?.chakra;
-      if (tag === undefined) return;
+    const learn = (methods: string | string[], url: string, tag: Priority | RouteRuleInput) => {
       const rule = typeof tag === 'string' ? { priority: tag } : tag;
-      for (const method of ([] as string[]).concat(route.method))
-        addUnlessConfigured(table, method, route.url, rule);
+      for (const method of ([] as string[]).concat(methods))
+        addUnlessConfigured(table, method, url, rule);
+    };
+    app.addHook('onRoute', (route) => {
+      if (route.config?.chakra !== undefined) learn(route.method, route.url, route.config.chakra);
     });
 
+    // With mode 'off' CHAKRA is a pure pass-through: add no per-request hooks at all.
+    if ((core as { mode?: string }).mode === 'off') return done();
+
     // Routes added before this plugin loaded (e.g. `app.register(c.fastify)` without
-    // await) miss onRoute; learn their tag from the matched route on first request.
-    const learned = new Set<string>();
+    // await) miss onRoute; learn their tag from the matched route, once per route.
+    const learned = new WeakSet<object>();
 
     app.addHook(
       options.hook ?? 'onRequest',
       (request: FastifyRequest, reply: FastifyReply, next: () => void) => {
-        const tag = request.routeOptions.config?.chakra;
-        if (tag !== undefined && request.routeOptions.url !== undefined) {
-          const key = request.method + ' ' + request.routeOptions.url;
-          if (!learned.has(key)) {
-            learned.add(key);
-            const rule = typeof tag === 'string' ? { priority: tag } : tag;
-            try {
-              addUnlessConfigured(table, request.method, request.routeOptions.url, rule);
-            } catch {
-              // An invalid tag must not fail the request; the route keeps its default.
-            }
+        const config = routeConfig(request);
+        if (config?.chakra !== undefined && config.url !== undefined && !learned.has(config)) {
+          learned.add(config);
+          try {
+            learn(config.method ?? request.method, config.url, config.chakra);
+          } catch {
+            // An invalid tag must not fail the request; the route keeps its default.
           }
         }
         const url = request.url;
@@ -83,7 +110,7 @@ export function fastifyPlugin(
         const decision = core.decide({
           method: request.method,
           path: q < 0 ? url : url.slice(0, q),
-          route: request.routeOptions.url,
+          route: config?.url,
           headers: request.headers,
           user: (request as { user?: unknown }).user,
           raw: request,
@@ -94,20 +121,12 @@ export function fastifyPlugin(
           return;
         }
         request.chakra = decision.info;
-        (request as Req)[kDecision] = decision;
+        const res = reply.raw as Res;
+        res[kDecision] = decision;
+        res.once('close', onClose);
         next();
       },
     );
-
-    app.addHook('onResponse', (request, reply, next) => {
-      (request as Req)[kDecision]?.done(reply.statusCode, false);
-      next();
-    });
-
-    app.addHook('onRequestAbort', (request, next) => {
-      (request as Req)[kDecision]?.done(499, true);
-      next();
-    });
 
     done();
   };
