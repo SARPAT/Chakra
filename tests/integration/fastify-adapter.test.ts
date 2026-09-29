@@ -96,8 +96,18 @@ describe('Fastify adapter', () => {
       }, 20);
     });
     await new Promise((r) => setTimeout(r, 150));
+    const ok = await fetch(`http://127.0.0.1:${port}/checkout`, { method: 'POST' });
+    expect(ok.status).toBe(200);
     await t.app.close();
-    expect(t.releases[0]).toBe('dropped');
+    expect(t.releases).toEqual(['dropped', 'success']);
+  });
+
+  it('adds no request hooks when mode is off', async () => {
+    const t = await app({ mode: 'off' });
+    const decide = vi.spyOn(t.core, 'decide');
+    const res = await t.app.inject('/recommendations');
+    expect(res.json()).toEqual({ items: [1, 2, 3] });
+    expect(decide).not.toHaveBeenCalled();
   });
 
   it('takes priority from request.user in preHandler mode, never from headers', async () => {
