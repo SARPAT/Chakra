@@ -8,13 +8,14 @@
 //   app.use(c);                                   // Express
 //   app.register(c.fastify);                      // Fastify
 
-import type { IncomingMessage, ServerResponse } from 'node:http';
+import type { ServerResponse } from 'node:http';
 import {
   NOOP_SINK,
   type ChakraEventSink,
   type Limiter,
   type LimiterSnapshot,
   type MetricsExporter,
+  type Logger,
 } from './types';
 import { resolveOptions, type ChakraOptions, type ResolvedOptions } from './config/schema';
 import { createAdmissionCore, type ControllableAdmissionCore } from './core/admission';
@@ -24,6 +25,7 @@ import { fastifyPlugin, type FastifyAdapterOptions } from './adapters/fastify';
 import { createLimiter } from './limiter';
 import { createPrometheusExporter } from './observability/prometheus';
 import { createDryRunReporter, type DryRunReport } from './observability/dry-run';
+import { onceLogger } from './utils/logger';
 import { createEventBus } from './observability/event-bus';
 
 type ExpressHandler = ReturnType<typeof expressMiddleware>;
@@ -43,8 +45,11 @@ export interface ChakraInstance extends ControllableAdmissionCore, ExpressHandle
   applyPreset(name: EmergencyPreset): void;
   /** Current limiter state. */
   snapshot(): LimiterSnapshot;
-  /** Prometheus scrape handler, usable as `app.get('/metrics', c.metricsHandler)`. */
-  metricsHandler(req: IncomingMessage, res: ServerResponse): void;
+  /**
+   * Prometheus scrape handler, usable as `app.get('/metrics', c.metricsHandler)` in
+   * Express, Fastify or a plain `http` server.
+   */
+  metricsHandler(req: unknown, res: ServerResponse | FastifyLikeReply): void;
   /** Dry-run mode only: what would have been shed or degraded, per route. */
   dryRunReport(): DryRunReport | undefined;
   /** Stop background timers. Safe to call more than once. */
@@ -64,11 +69,12 @@ export function chakra(options: ChakraOptions = {}): ChakraInstance {
   const limiter: Limiter = createLimiter(resolved.limiter, sink);
   const table = createRouteTable({ ...resolved.routes });
   const core = createAdmissionCore({ options: resolved, limiter, resolver: table, sink });
-  const express = expressMiddleware(core, table);
+  const log = safeLog(resolved);
+  const express = expressMiddleware(core, table, (msg) => log?.warn(msg));
 
   if (resolved.mode !== 'off') limiter.start();
-  if (resolved.logger) {
-    resolved.logger.info(
+  if (log) {
+    log.info(
       `mode=${resolved.mode} routes=${Object.keys(resolved.routes).length} default=${resolved.defaultPriority}`,
     );
   }
@@ -88,7 +94,8 @@ export function chakra(options: ChakraOptions = {}): ChakraInstance {
       if (preset) core.setOverrides(preset);
     },
     snapshot: () => limiter.snapshot(),
-    metricsHandler: (_req: IncomingMessage, res: ServerResponse) => serveMetrics(metrics, res),
+    metricsHandler: (_req: unknown, res: ServerResponse | FastifyLikeReply) =>
+      serveMetrics(metrics, toServerResponse(res)),
     dryRunReport: () => reporter?.report(),
     close() {
       if (closed) return;
@@ -109,9 +116,28 @@ function createMetricsSink(options: ResolvedOptions): ChakraEventSink {
   return createPrometheusExporter(options.metrics);
 }
 
+/** The user's logger with every call guarded, so a broken logger never throws. */
+function safeLog(options: ResolvedOptions): Logger | undefined {
+  return options.logger ? onceLogger(options.logger) : undefined;
+}
+
 function dryRunLog(options: ResolvedOptions): Parameters<typeof createDryRunReporter>[0] {
-  const logger = options.logger;
+  const logger = safeLog(options);
   return { log: logger ? (line) => logger.info(`dry-run ${line}`) : () => {} };
+}
+
+/** The part of a Fastify reply the metrics handler needs. */
+export interface FastifyLikeReply {
+  raw: ServerResponse;
+  hijack(): unknown;
+}
+
+function toServerResponse(res: ServerResponse | FastifyLikeReply): ServerResponse {
+  if ('raw' in res && typeof res.hijack === 'function') {
+    res.hijack();
+    return res.raw;
+  }
+  return res as ServerResponse;
 }
 
 function serveMetrics(sink: ChakraEventSink, res: ServerResponse): void {

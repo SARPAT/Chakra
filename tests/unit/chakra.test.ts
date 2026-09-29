@@ -17,6 +17,15 @@ describe('chakra()', () => {
     expect(() => chakra({ mode: 'auto' } as never)).toThrow(ChakraConfigError);
   });
 
+  it('survives a logger that throws', () => {
+    const boom = () => {
+      throw new Error('logger');
+    };
+    const c = chakra({ logger: { info: boom, warn: boom, error: boom } });
+    expect(c.decide({ method: 'GET', path: '/', headers: {} }).outcome).toBe('admit');
+    c.close();
+  });
+
   it('forwards events to a custom sink', () => {
     const events: ChakraEvent[] = [];
     const c = chakra({

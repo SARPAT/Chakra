@@ -12,6 +12,12 @@ import { PRIORITIES } from '../types';
 /** Property under which a tagged handler carries its rule. */
 export const CHAKRA_ROUTE_TAG: unique symbol = Symbol.for('chakra.route');
 
+/**
+ * Request property the Express adapter sets to a callback that route() calls with
+ * its rule, so the adapter can detect tags that discovery missed.
+ */
+export const CHAKRA_TAG_CHECK: unique symbol = Symbol.for('chakra.tagCheck');
+
 export interface RouteOptions {
   /** Response sent instead of the default shed response when this route is shed. */
   fallback?: ShedResponse;
@@ -37,10 +43,14 @@ export function route(priority: Priority, options: RouteOptions = {}): TaggedRou
     options.fallback ? { priority, fallback: options.fallback } : { priority },
   );
   const handler = function chakraRoute(
-    _req: unknown,
+    req: unknown,
     _res: unknown,
     next: (err?: unknown) => void,
   ): void {
+    const check = (req as { [CHAKRA_TAG_CHECK]?: (req: unknown, rule: RouteRuleInput) => void })?.[
+      CHAKRA_TAG_CHECK
+    ];
+    if (check) check(req, rule);
     next();
   };
   Object.defineProperty(handler, CHAKRA_ROUTE_TAG, { value: rule, enumerable: false });

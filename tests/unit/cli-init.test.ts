@@ -48,6 +48,20 @@ describe('scanRoutes', () => {
   });
 });
 
+describe('scanRoutes with inline tags', () => {
+  it('keeps the priority a route already declares', () => {
+    writeFileSync(
+      join(dir, 'app.js'),
+      `app.get('/recommendations', chakra.route('critical'), h);
+app.post('/checkout', { config: { chakra: 'sheddable' } }, h);`,
+    );
+    expect(scanRoutes(dir)).toEqual({
+      'GET /recommendations': 'critical',
+      'POST /checkout': 'sheddable',
+    });
+  });
+});
+
 describe('runInit', () => {
   it('writes a config that chakra() accepts, and an Express snippet', () => {
     writeFileSync(join(dir, 'app.js'), APP);
