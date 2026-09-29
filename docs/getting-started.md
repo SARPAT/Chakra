@@ -85,7 +85,7 @@ const c = chakra({
 
 `ctx.user` is whatever your auth middleware put on `req.user`. Return `undefined` to fall through to route rules. Never derive priority from request headers: clients control them.
 
-In Express, mount CHAKRA after your auth middleware if the resolver needs `req.user`. In Fastify, admission runs in `onRequest` by default, before auth hooks; see [Configuration](configuration.md#fastify) for running it later.
+In Express, mount CHAKRA after your auth middleware if the resolver needs `req.user`. In Fastify, admission runs in `onRequest` by default, before auth hooks; register `c.fastifyPlugin({ hook: 'preHandler' })` instead so it runs after them.
 
 ## 5. Serve lighter responses under pressure
 
