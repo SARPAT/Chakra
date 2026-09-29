@@ -77,10 +77,15 @@ export function createRouteTable(
     add(parts.length === 2 ? parts[0] : '*', parts[parts.length - 1], value);
   }
 
+  // HEAD falls back to the GET rule: Express serves HEAD with GET handlers, and
+  // load balancers often probe health checks with HEAD.
   function match(ctx: RequestContext): RouteRule | undefined {
+    return lookup(ctx, ctx.method) ?? (ctx.method === 'HEAD' ? lookup(ctx, 'GET') : undefined);
+  }
+
+  function lookup(ctx: RequestContext, method: string): RouteRule | undefined {
     try {
       const { byPattern, dynamic } = snap;
-      const method = ctx.method;
       const hit =
         (ctx.route !== undefined && pick(byPattern.get(ctx.route), method)) ||
         pick(byPattern.get(ctx.path), method) ||
