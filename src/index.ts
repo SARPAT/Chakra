@@ -15,6 +15,7 @@ import {
   type Limiter,
   type LimiterSnapshot,
   type MetricsExporter,
+  type Logger,
 } from './types';
 import { resolveOptions, type ChakraOptions, type ResolvedOptions } from './config/schema';
 import { createAdmissionCore, type ControllableAdmissionCore } from './core/admission';
@@ -24,6 +25,7 @@ import { fastifyPlugin, type FastifyAdapterOptions } from './adapters/fastify';
 import { createLimiter } from './limiter';
 import { createPrometheusExporter } from './observability/prometheus';
 import { createDryRunReporter, type DryRunReport } from './observability/dry-run';
+import { onceLogger } from './utils/logger';
 import { createEventBus } from './observability/event-bus';
 
 type ExpressHandler = ReturnType<typeof expressMiddleware>;
@@ -67,12 +69,12 @@ export function chakra(options: ChakraOptions = {}): ChakraInstance {
   const limiter: Limiter = createLimiter(resolved.limiter, sink);
   const table = createRouteTable({ ...resolved.routes });
   const core = createAdmissionCore({ options: resolved, limiter, resolver: table, sink });
-  const logger = resolved.logger;
-  const express = expressMiddleware(core, table, (msg) => logger && logger.warn(msg));
+  const log = safeLog(resolved);
+  const express = expressMiddleware(core, table, (msg) => log?.warn(msg));
 
   if (resolved.mode !== 'off') limiter.start();
-  if (resolved.logger) {
-    resolved.logger.info(
+  if (log) {
+    log.info(
       `mode=${resolved.mode} routes=${Object.keys(resolved.routes).length} default=${resolved.defaultPriority}`,
     );
   }
@@ -114,8 +116,13 @@ function createMetricsSink(options: ResolvedOptions): ChakraEventSink {
   return createPrometheusExporter(options.metrics);
 }
 
+/** The user's logger with every call guarded, so a broken logger never throws. */
+function safeLog(options: ResolvedOptions): Logger | undefined {
+  return options.logger ? onceLogger(options.logger) : undefined;
+}
+
 function dryRunLog(options: ResolvedOptions): Parameters<typeof createDryRunReporter>[0] {
-  const logger = options.logger;
+  const logger = safeLog(options);
   return { log: logger ? (line) => logger.info(`dry-run ${line}`) : () => {} };
 }
 

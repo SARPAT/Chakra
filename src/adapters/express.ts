@@ -36,14 +36,10 @@ export function expressMiddleware(
     checked.add(rule);
     if (table.match({ method: r.method, path: r.baseUrl + r.path, headers: {} })) return;
     const pattern = typeof r.route?.path === 'string' ? r.route.path : '?';
-    try {
-      warn(
-        `chakra.route('${rule.priority}') on "${r.method} ${pattern}" was not discovered (router mounted below "/"?). ` +
-          `Declare it in the routes option with its full path instead.`,
-      );
-    } catch {
-      /* a broken logger must never break the request */
-    }
+    warn(
+      `chakra.route('${rule.priority}') on "${r.method} ${pattern}" was not discovered (router mounted below "/"?). ` +
+        `Declare it in the routes option with its full path instead.`,
+    );
   };
   return function chakra(req: Request, res: Response, next: NextFunction): void {
     if (!discovered) {
