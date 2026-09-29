@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/).
 
-## [1.0.0] - 2026-09-29
+## [0.2.0] - 2026-09-29
 
 A ground-up rebuild. CHAKRA is now priority-aware adaptive load shedding for Node.js. See [ADR 0001](docs/adr/0001-adaptive-admission-control.md) for the design and the reasons for the change.
 
@@ -27,4 +27,4 @@ A ground-up rebuild. CHAKRA is now priority-aware adaptive load shedding for Nod
 - The `better-sqlite3` native dependency. CHAKRA now has no runtime dependencies.
 - Priority derived from client-controlled headers such as `X-User-Tier`.
 
-[1.0.0]: https://github.com/SARPAT/Chakra/releases/tag/v1.0.0
+[0.2.0]: https://github.com/SARPAT/Chakra/releases/tag/v0.2.0
