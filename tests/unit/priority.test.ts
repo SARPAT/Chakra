@@ -24,6 +24,12 @@ describe('createRouteTable', () => {
     expect(table.match(ctx('DELETE', '/health'))?.key).toBe('* /health');
   });
 
+  it('matches HEAD with the GET rule', () => {
+    expect(table.match(ctx('HEAD', '/products/featured'))?.key).toBe('GET /products/featured');
+    expect(table.match(ctx('HEAD', '/products/42'))?.key).toBe('GET /products/:id');
+    expect(table.match(ctx('HEAD', '/checkout'))).toBeUndefined();
+  });
+
   it('matches params and wildcards and labels by pattern, never the concrete path', () => {
     const rule = table.match(ctx('GET', '/products/42'));
     expect(rule?.key).toBe('GET /products/:id');

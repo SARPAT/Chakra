@@ -107,7 +107,9 @@ export class AdaptiveLimiter implements Limiter {
   acquire(priority: Priority, force = false): AcquireResult {
     const band = BAND_INDEX[priority] ?? 2;
     const before = this.inFlight;
-    const admitted = before < this.bandLimits[band];
+    // An idle limiter always admits one probe: bands can be 0 at a low limit, and
+    // the limit only moves on release, so without it the limiter could never recover.
+    const admitted = before < this.bandLimits[band] || before === 0;
     // Rejected requests count as demand too: a band filling up while latency
     // is fine is exactly when the limit should grow.
     if (before + 1 > this.maxInFlight) this.maxInFlight = before + 1;

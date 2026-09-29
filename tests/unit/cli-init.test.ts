@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { resolveOptions } from '../../src/config/schema';
@@ -45,6 +45,15 @@ describe('scanRoutes', () => {
       'POST /checkout': 'critical',
       'PUT /api/cart': 'high',
     });
+  });
+});
+
+describe('scanRoutes with symlinks', () => {
+  it('skips dangling links and link loops', () => {
+    writeFileSync(join(dir, 'app.js'), "app.get('/a', h)");
+    symlinkSync(join(dir, 'missing.js'), join(dir, 'dangling.js'));
+    symlinkSync(dir, join(dir, 'loop'));
+    expect(scanRoutes(dir)).toEqual({ 'GET /a': 'normal' });
   });
 });
 

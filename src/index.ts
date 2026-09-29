@@ -180,4 +180,5 @@ export type { Overrides } from './core/admission';
 export { route, EMERGENCY_PRESETS, type EmergencyPreset } from './priority';
 export type { FastifyAdapterOptions } from './adapters/fastify';
 export type { DryRunReport, DryRunReporter } from './observability/dry-run';
+export { createOtelSink, type MeterLike } from './observability/otel';
 export * from './types';

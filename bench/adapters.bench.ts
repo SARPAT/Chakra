@@ -5,12 +5,25 @@
 import { EventEmitter } from 'node:events';
 import Fastify from 'fastify';
 import { createAdmissionCore } from '../src/core/admission';
-import { admitAllLimiter } from '../src/core/defaults';
 import { resolveOptions } from '../src/config/schema';
 import { createRouteTable } from '../src/priority';
 import { expressMiddleware } from '../src/adapters/express';
 import { fastifyPlugin } from '../src/adapters/fastify';
 import type { Request, Response } from 'express';
+import type { Limiter } from '../src/types';
+
+const admitAll: Limiter = {
+  acquire: () => ({ admitted: true, degraded: false, token: { release() {} } }),
+  snapshot: () => ({
+    limit: 1,
+    inFlight: 0,
+    pressure: 0,
+    eventLoopDelayMs: 0,
+    bandLimits: { critical: 1, high: 1, normal: 1, sheddable: 1 },
+  }),
+  start() {},
+  stop() {},
+};
 
 const routes: Record<string, 'critical' | 'sheddable'> = { 'POST /checkout': 'critical' };
 for (let i = 0; i < 50; i++) routes[`GET /r${i}/:id/items/*`] = 'sheddable';
@@ -20,7 +33,7 @@ function setup() {
   const table = createRouteTable(options.routes);
   const core = createAdmissionCore({
     options,
-    limiter: admitAllLimiter(),
+    limiter: admitAll,
     resolver: table,
     sink: { emit() {} },
   });
