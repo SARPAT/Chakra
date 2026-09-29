@@ -8,7 +8,7 @@
 //   app.use(c);                                   // Express
 //   app.register(c.fastify);                      // Fastify
 
-import type { IncomingMessage, ServerResponse } from 'node:http';
+import type { ServerResponse } from 'node:http';
 import {
   NOOP_SINK,
   type ChakraEventSink,
@@ -43,8 +43,11 @@ export interface ChakraInstance extends ControllableAdmissionCore, ExpressHandle
   applyPreset(name: EmergencyPreset): void;
   /** Current limiter state. */
   snapshot(): LimiterSnapshot;
-  /** Prometheus scrape handler, usable as `app.get('/metrics', c.metricsHandler)`. */
-  metricsHandler(req: IncomingMessage, res: ServerResponse): void;
+  /**
+   * Prometheus scrape handler, usable as `app.get('/metrics', c.metricsHandler)` in
+   * Express, Fastify or a plain `http` server.
+   */
+  metricsHandler(req: unknown, res: ServerResponse | FastifyLikeReply): void;
   /** Dry-run mode only: what would have been shed or degraded, per route. */
   dryRunReport(): DryRunReport | undefined;
   /** Stop background timers. Safe to call more than once. */
@@ -89,7 +92,8 @@ export function chakra(options: ChakraOptions = {}): ChakraInstance {
       if (preset) core.setOverrides(preset);
     },
     snapshot: () => limiter.snapshot(),
-    metricsHandler: (_req: IncomingMessage, res: ServerResponse) => serveMetrics(metrics, res),
+    metricsHandler: (_req: unknown, res: ServerResponse | FastifyLikeReply) =>
+      serveMetrics(metrics, toServerResponse(res)),
     dryRunReport: () => reporter?.report(),
     close() {
       if (closed) return;
@@ -113,6 +117,20 @@ function createMetricsSink(options: ResolvedOptions): ChakraEventSink {
 function dryRunLog(options: ResolvedOptions): Parameters<typeof createDryRunReporter>[0] {
   const logger = options.logger;
   return { log: logger ? (line) => logger.info(`dry-run ${line}`) : () => {} };
+}
+
+/** The part of a Fastify reply the metrics handler needs. */
+export interface FastifyLikeReply {
+  raw: ServerResponse;
+  hijack(): unknown;
+}
+
+function toServerResponse(res: ServerResponse | FastifyLikeReply): ServerResponse {
+  if ('raw' in res && typeof res.hijack === 'function') {
+    res.hijack();
+    return res.raw;
+  }
+  return res as ServerResponse;
 }
 
 function serveMetrics(sink: ChakraEventSink, res: ServerResponse): void {
