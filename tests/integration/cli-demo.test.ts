@@ -19,6 +19,14 @@ describe('chakra demo', () => {
     expect(checkout.shed + checkout.failed).toBe(0);
   }, 15_000);
 
+  it('sheds sheddable requests while every critical request succeeds under overload', async () => {
+    const { surge } = await runDemo({ seconds: 6, rps: 600, inProcess: true, write: () => {} });
+    const [checkout, , recommendations] = surge;
+    expect(checkout.ok).toBeGreaterThan(0);
+    expect(checkout.shed + checkout.failed).toBe(0);
+    expect(recommendations.shed).toBeGreaterThan(recommendations.ok);
+  }, 20_000);
+
   it('serves the demo routes and a status endpoint', async () => {
     const server = await startDemoServer(0, 'enforce');
     try {

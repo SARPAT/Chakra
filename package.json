@@ -32,7 +32,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "check:package": "node scripts/check-package.mjs",
-    "prepublishOnly": "npm run typecheck && npm run lint && npm run format:check && npm test && npm run build && npm run check:package"
+    "prepublishOnly": "npm run typecheck && npm run lint && npm run format:check && npm test && npm run build && npm run check:package",
+    "bench": "npm run build && npm --prefix bench ci --no-audit --no-fund && node bench/run.js"
   },
   "keywords": [
     "middleware",

@@ -1,0 +1,18 @@
+{
+  "name": "chakra-bench",
+  "private": true,
+  "description": "Reproducible CHAKRA benchmarks: middleware overhead and overload behaviour",
+  "scripts": {
+    "micro": "node micro.js",
+    "overhead": "node overhead.js",
+    "overload": "node overload.js"
+  },
+  "dependencies": {
+    "autocannon": "8.0.0",
+    "express": "4.21.2",
+    "fastify": "5.6.1"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

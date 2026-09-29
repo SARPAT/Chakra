@@ -40,12 +40,16 @@ export class GradientLimit implements LimitAlgorithm {
   }
 
   update(w: WindowSummary): number {
-    // Growth is only learned while at least half the limit is used.
+    // Latency only moves the limit while at least half of it is in use: below
+    // that, requests aren't queueing behind the limit, so a slower window is
+    // noise (GC, timer jitter), and shrinking on it ratchets the limit down.
     const busy = w.maxInFlight >= this.limit / 2;
     let gradient = 1;
     if (w.sampleCount > 0 && w.avgRttMs > 0) {
-      const longRtt = this.trackLongRtt(w.avgRttMs, busy);
-      gradient = Math.max(0.5, Math.min(1, (this.tolerance * longRtt) / w.avgRttMs));
+      // Sub-millisecond latencies are too noisy to compare; floor them at 1ms.
+      const shortRtt = Math.max(1, w.avgRttMs);
+      const longRtt = this.trackLongRtt(shortRtt, busy);
+      if (busy) gradient = Math.max(0.5, Math.min(1, (this.tolerance * longRtt) / shortRtt));
     } else if (w.lagPressure <= 1) {
       return this.limit;
     }
