@@ -48,7 +48,7 @@ app.get('/recommendations', async (req) => (req.chakra?.degraded ? [] : loadReco
 app.listen({ port: 3000 });
 ```
 
-Register CHAKRA before your routes. In Fastify the plugin reads each route's `config.chakra` as the route is added, so routes registered earlier are not seen.
+Register CHAKRA before your routes. In Fastify the plugin reads each route's `config.chakra` as the route is added, so if you tag routes inline, `await app.register(c.fastify)` before declaring them; otherwise Fastify loads the plugin after your top-level routes and their tags are missed. Rules in `routes` apply either way.
 
 ## 3. Declare priorities
 

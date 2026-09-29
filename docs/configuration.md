@@ -47,7 +47,7 @@ routes: {
 - Patterns support static segments, `:param` segments and a trailing `*`.
 - When several rules match, the most specific wins (more static segments, no wildcard).
 - `fallback` replaces `shedResponse` for this route only; unspecified fields inherit from `shedResponse`.
-- Inline tags (`route('critical')` in Express, `config: { chakra: 'critical' }` in Fastify) are added to the same table. A rule in `routes` for the same method and pattern takes precedence.
+- Inline tags (`route('critical')` in Express, `config: { chakra: 'critical' }` in Fastify) are added to the same table. A rule in `routes` for the same method and pattern takes precedence. In Fastify, `await app.register(c.fastify)` before declaring tagged routes so the plugin sees them.
 - The matched rule's key (e.g. `GET /api/products/:id`) is the metrics `route` label. Unmatched requests are labelled `<unmatched>`, never with their raw path.
 
 ## Priority resolver

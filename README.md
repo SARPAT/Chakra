@@ -96,7 +96,7 @@ In Express you can also tag a route inline, and in Fastify through route config:
 ```js
 const { route } = require('chakra-middleware');
 app.post('/checkout', route('critical'), handler);                         // Express
-app.post('/checkout', { config: { chakra: 'critical' } }, handler);        // Fastify
+app.post('/checkout', { config: { chakra: 'critical' } }, handler);        // Fastify, after `await app.register(c.fastify)`
 ```
 
 ## Degrade mode
