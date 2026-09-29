@@ -62,17 +62,33 @@ export interface ResolvedOptions {
 
 export const DEFAULT_SHED_RESPONSE: ShedResponse = Object.freeze({
   status: 503,
-  body: Object.freeze({ error: 'overloaded', message: 'The service is busy. Please retry shortly.' }),
+  body: Object.freeze({
+    error: 'overloaded',
+    message: 'The service is busy. Please retry shortly.',
+  }),
   retryAfterSeconds: 1,
 });
 
 const MODES: readonly Mode[] = ['enforce', 'dry-run', 'off'];
 const METHODS = new Set(['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', '*']);
 const TOP_LEVEL_KEYS = new Set([
-  'mode', 'defaultPriority', 'routes', 'priority', 'limiter', 'shedResponse', 'metrics', 'logger',
+  'mode',
+  'defaultPriority',
+  'routes',
+  'priority',
+  'limiter',
+  'shedResponse',
+  'metrics',
+  'logger',
 ]);
 const LIMITER_KEYS = new Set([
-  'algorithm', 'initialLimit', 'minLimit', 'maxLimit', 'maxEventLoopDelayMs', 'bandShares', 'degradeAt',
+  'algorithm',
+  'initialLimit',
+  'minLimit',
+  'maxLimit',
+  'maxEventLoopDelayMs',
+  'bandShares',
+  'degradeAt',
 ]);
 const SHED_KEYS = new Set(['status', 'headers', 'body', 'retryAfterSeconds']);
 
@@ -113,7 +129,9 @@ export function resolveOptions(
 
   const defaultPriority = input.defaultPriority ?? 'normal';
   if (!isPriority(defaultPriority)) {
-    problems.push(`defaultPriority must be one of ${PRIORITIES.join(', ')}; got ${show(defaultPriority)}`);
+    problems.push(
+      `defaultPriority must be one of ${PRIORITIES.join(', ')}; got ${show(defaultPriority)}`,
+    );
   }
 
   const routes = input.routes ?? {};
@@ -185,7 +203,8 @@ function validateRoute(key: string, value: unknown, problems: string[]): void {
     return;
   }
   for (const k of Object.keys(value)) {
-    if (k !== 'priority' && k !== 'fallback') problems.push(`routes[${show(key)}] has unknown key "${k}"`);
+    if (k !== 'priority' && k !== 'fallback')
+      problems.push(`routes[${show(key)}] has unknown key "${k}"`);
   }
   if (!isPriority(value.priority)) {
     problems.push(`routes[${show(key)}].priority must be one of ${PRIORITIES.join(', ')}`);
@@ -203,8 +222,15 @@ function validateLimiter(limiter: unknown, problems: string[]): void {
   for (const k of Object.keys(limiter)) {
     if (!LIMITER_KEYS.has(k)) problems.push(`limiter has unknown option "${k}"`);
   }
-  const { algorithm, initialLimit, minLimit, maxLimit, maxEventLoopDelayMs, bandShares, degradeAt } =
-    limiter as LimiterOptions;
+  const {
+    algorithm,
+    initialLimit,
+    minLimit,
+    maxLimit,
+    maxEventLoopDelayMs,
+    bandShares,
+    degradeAt,
+  } = limiter as LimiterOptions;
 
   if (algorithm !== undefined && algorithm !== 'gradient2' && algorithm !== 'aimd') {
     problems.push(`limiter.algorithm must be "gradient2" or "aimd"; got ${show(algorithm)}`);
@@ -222,7 +248,10 @@ function validateLimiter(limiter: unknown, problems: string[]): void {
   ) {
     problems.push('limiter.initialLimit must be between minLimit and maxLimit');
   }
-  if (maxEventLoopDelayMs !== undefined && !(isFiniteNumber(maxEventLoopDelayMs) && maxEventLoopDelayMs > 0)) {
+  if (
+    maxEventLoopDelayMs !== undefined &&
+    !(isFiniteNumber(maxEventLoopDelayMs) && maxEventLoopDelayMs > 0)
+  ) {
     problems.push('limiter.maxEventLoopDelayMs must be a positive number');
   }
   if (degradeAt !== undefined && !(isFiniteNumber(degradeAt) && degradeAt > 0 && degradeAt <= 1)) {
@@ -259,7 +288,10 @@ function validateShedResponse(path: string, value: unknown, problems: string[]):
       problems.push(`${path}.headers must be an object of strings`);
     }
   }
-  if (retryAfterSeconds !== undefined && !(Number.isInteger(retryAfterSeconds) && retryAfterSeconds >= 0)) {
+  if (
+    retryAfterSeconds !== undefined &&
+    !(Number.isInteger(retryAfterSeconds) && retryAfterSeconds >= 0)
+  ) {
     problems.push(`${path}.retryAfterSeconds must be a non-negative integer`);
   }
 }
@@ -275,7 +307,10 @@ function validateMetrics(metrics: unknown, problems: string[]): void {
     if (k !== 'prefix' && k !== 'maxRoutes') problems.push(`metrics has unknown option "${k}"`);
   }
   const { prefix, maxRoutes } = metrics as MetricsOptions;
-  if (prefix !== undefined && !(typeof prefix === 'string' && /^[a-zA-Z_:][a-zA-Z0-9_:]*$/.test(prefix))) {
+  if (
+    prefix !== undefined &&
+    !(typeof prefix === 'string' && /^[a-zA-Z_:][a-zA-Z0-9_:]*$/.test(prefix))
+  ) {
     problems.push('metrics.prefix must be a valid Prometheus metric name prefix');
   }
   checkPositiveInt('metrics.maxRoutes', maxRoutes, problems);

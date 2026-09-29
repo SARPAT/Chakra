@@ -259,10 +259,7 @@ export interface EventLoopLagEvent {
 }
 
 export type ChakraEvent =
-  | AdmissionEvent
-  | ShedCompleteEvent
-  | LimiterStateEvent
-  | EventLoopLagEvent;
+  AdmissionEvent | ShedCompleteEvent | LimiterStateEvent | EventLoopLagEvent;
 
 /** Anything that consumes CHAKRA events. Implemented in `src/observability/`. */
 export interface ChakraEventSink {

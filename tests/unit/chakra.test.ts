@@ -19,7 +19,11 @@ describe('chakra()', () => {
 
   it('forwards events to a custom sink', () => {
     const events: ChakraEvent[] = [];
-    const c = chakra({ logger: false, metrics: { emit: (e) => events.push(e) }, routes: { 'GET /': 'high' } });
+    const c = chakra({
+      logger: false,
+      metrics: { emit: (e) => events.push(e) },
+      routes: { 'GET /': 'high' },
+    });
     c.decide({ method: 'GET', path: '/', headers: {} });
     expect(events[0]).toMatchObject({ type: 'admission', band: 'high', route: 'GET /' });
     c.close();
@@ -62,5 +66,69 @@ describe('metricsHandler', () => {
     const c = chakra({ logger: false, metrics: exporter });
     const res = await scrape(c.metricsHandler);
     expect(res).toEqual({ status: 200, type: 'text/plain; version=0.0.4', body: 'chakra_up 1\n' });
+  });
+});
+
+describe('default observability', () => {
+  it('exports Prometheus metrics by default', () => {
+    const c = chakra({ logger: false, routes: { 'GET /': 'high' } });
+    c.decide({ method: 'GET', path: '/', headers: {} });
+    const res = { statusCode: 0, headers: {} as Record<string, string>, body: '' };
+    c.metricsHandler(
+      {} as never,
+      {
+        set statusCode(v: number) {
+          res.statusCode = v;
+        },
+        setHeader: (k: string, v: string) => {
+          res.headers[k] = v;
+        },
+        end: (b: string) => {
+          res.body = b;
+        },
+      } as never,
+    );
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toMatch(/chakra_requests_total\{[^}]*band="high"[^}]*\} 1/);
+    c.close();
+  });
+
+  it('reports would-shed decisions in dry-run mode', () => {
+    const lines: string[] = [];
+    const c = chakra({
+      mode: 'dry-run',
+      routes: { 'GET /recs': 'sheddable' },
+      logger: { info: (m) => lines.push(m), warn: () => {}, error: () => {} },
+    });
+    c.setOverrides({ closedBands: ['sheddable'] });
+    expect(c.decide({ method: 'GET', path: '/recs', headers: {} }).outcome).toBe('admit');
+    expect(c.dryRunReport()?.totals.shed).toBe(1);
+    expect(lines.some((l) => l.startsWith('dry-run '))).toBe(true);
+    c.close();
+  });
+
+  it('has no dry-run report in enforce mode', () => {
+    const c = chakra({ logger: false });
+    expect(c.dryRunReport()).toBeUndefined();
+    c.close();
+  });
+});
+
+describe('adaptive limiter wiring', () => {
+  it('sheds sheddable requests once the limit is saturated while critical ones get through', () => {
+    const c = chakra({
+      logger: false,
+      metrics: false,
+      routes: { 'GET /recs': 'sheddable', 'POST /pay': 'critical' },
+      limiter: { initialLimit: 4, minLimit: 4, maxLimit: 4 },
+    });
+    const held = Array.from({ length: 2 }, () =>
+      c.decide({ method: 'GET', path: '/recs', headers: {} }),
+    );
+    expect(held.every((d) => d.outcome === 'admit')).toBe(true);
+    expect(c.decide({ method: 'GET', path: '/recs', headers: {} }).outcome).toBe('shed');
+    expect(c.decide({ method: 'POST', path: '/pay', headers: {} }).outcome).toBe('admit');
+    expect(c.snapshot().limit).toBe(4);
+    c.close();
   });
 });

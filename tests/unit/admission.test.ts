@@ -1,5 +1,5 @@
 import { createAdmissionCore } from '../../src/core/admission';
-import { admitAllLimiter, exactRouteResolver } from '../../src/core/defaults';
+import { createRouteTable } from '../../src/priority';
 import { resolveOptions, type ChakraOptions } from '../../src/config/schema';
 import {
   UNMATCHED_ROUTE,
@@ -13,6 +13,15 @@ import {
 } from '../../src/types';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function admitAllLimiter(): Limiter {
+  return {
+    acquire: () => ({ admitted: true, degraded: false, token: { release: () => {} } }),
+    snapshot: () => SNAPSHOT,
+    start: () => {},
+    stop: () => {},
+  };
+}
 
 const SNAPSHOT: LimiterSnapshot = {
   limit: 10,
@@ -47,7 +56,7 @@ function setup(options: ChakraOptions = {}, limiter: Limiter = admitAllLimiter()
   const core = createAdmissionCore({
     options: resolved,
     limiter,
-    resolver: exactRouteResolver(resolved.routes),
+    resolver: createRouteTable({ ...resolved.routes }),
     sink: { emit: (e) => events.push(e) },
   });
   return { core, events };
@@ -80,7 +89,12 @@ describe('priority resolution', () => {
   });
 
   it('ignores a resolver that throws or returns an unknown value', () => {
-    const throwing = setup({ routes: { 'GET /a': 'high' }, priority: () => { throw new Error('boom'); } });
+    const throwing = setup({
+      routes: { 'GET /a': 'high' },
+      priority: () => {
+        throw new Error('boom');
+      },
+    });
     expect(throwing.core.decide(ctx('GET', '/a')).info.priority).toBe('high');
 
     const bogus = setup({ routes: { 'GET /a': 'high' }, priority: () => 'vip' as Priority });
@@ -96,7 +110,12 @@ describe('enforce mode', () => {
     const { core } = setup({}, limiter);
     const d = core.decide(ctx('GET', '/'));
     expect(d.outcome).toBe('admit');
-    expect(d.info).toMatchObject({ degraded: false, wouldShed: false, pressure: 0.4, mode: 'enforce' });
+    expect(d.info).toMatchObject({
+      degraded: false,
+      wouldShed: false,
+      pressure: 0.4,
+      mode: 'enforce',
+    });
   });
 
   it('marks degraded admits', () => {
@@ -131,7 +150,11 @@ describe('enforce mode', () => {
   it('uses a route fallback over the default shed response', () => {
     const { limiter } = scriptedLimiter({ sheddable: 'reject' });
     const { core } = setup(
-      { routes: { 'GET /recs': { priority: 'sheddable', fallback: { status: 200, body: { items: [] } } } } },
+      {
+        routes: {
+          'GET /recs': { priority: 'sheddable', fallback: { status: 200, body: { items: [] } } },
+        },
+      },
       limiter,
     );
     const d = core.decide(ctx('GET', '/recs'));
@@ -171,7 +194,10 @@ describe('done()', () => {
 describe('dry-run mode', () => {
   it('admits what it would shed, forces a token, and reports the real decision', () => {
     const { limiter, calls, releases } = scriptedLimiter({ sheddable: 'reject' });
-    const { core, events } = setup({ mode: 'dry-run', routes: { 'GET /recs': 'sheddable' } }, limiter);
+    const { core, events } = setup(
+      { mode: 'dry-run', routes: { 'GET /recs': 'sheddable' } },
+      limiter,
+    );
 
     const d = core.decide(ctx('GET', '/recs'));
     expect(d.outcome).toBe('admit');
@@ -236,7 +262,9 @@ describe('overrides', () => {
 describe('failure isolation', () => {
   it('admits when the limiter throws', () => {
     const broken: Limiter = {
-      acquire: () => { throw new Error('limiter bug'); },
+      acquire: () => {
+        throw new Error('limiter bug');
+      },
       snapshot: () => SNAPSHOT,
       start: () => {},
       stop: () => {},
@@ -250,8 +278,16 @@ describe('failure isolation', () => {
     const core = createAdmissionCore({
       options: resolved,
       limiter: admitAllLimiter(),
-      resolver: { match: () => { throw new Error('resolver bug'); } },
-      sink: { emit: () => { throw new Error('sink bug'); } },
+      resolver: {
+        match: () => {
+          throw new Error('resolver bug');
+        },
+      },
+      sink: {
+        emit: () => {
+          throw new Error('sink bug');
+        },
+      },
     });
     expect(core.decide(ctx('GET', '/')).outcome).toBe('admit');
   });
