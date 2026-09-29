@@ -14,6 +14,7 @@ import {
   type RouteRuleInput,
   type ShedResponse,
 } from '../types';
+import { validateHeaderName, validateHeaderValue } from 'node:http';
 import { consoleLogger } from '../utils/logger';
 
 // ─── Options ──────────────────────────────────────────────────────────────────
@@ -279,13 +280,30 @@ function validateShedResponse(path: string, value: unknown, problems: string[]):
   for (const k of Object.keys(value)) {
     if (!SHED_KEYS.has(k)) problems.push(`${path} has unknown key "${k}"`);
   }
-  const { status, headers, retryAfterSeconds } = value as ShedResponse;
+  const { status, headers, body, retryAfterSeconds } = value as ShedResponse;
   if (status !== undefined && !(Number.isInteger(status) && status >= 200 && status <= 599)) {
     problems.push(`${path}.status must be an HTTP status code`);
   }
   if (headers !== undefined) {
     if (!isPlainObject(headers) || Object.values(headers).some((v) => typeof v !== 'string')) {
       problems.push(`${path}.headers must be an object of strings`);
+    } else {
+      // Checked here so a bad header cannot throw later, on every shed request.
+      for (const [k, v] of Object.entries(headers)) {
+        try {
+          validateHeaderName(k);
+          validateHeaderValue(k, v);
+        } catch {
+          problems.push(`${path}.headers[${show(k)}] is not a valid HTTP header`);
+        }
+      }
+    }
+  }
+  if (body !== undefined && typeof body !== 'string' && !Buffer.isBuffer(body)) {
+    try {
+      JSON.stringify(body);
+    } catch {
+      problems.push(`${path}.body must be a string, a Buffer or JSON-serialisable`);
     }
   }
   if (
