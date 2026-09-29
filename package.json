@@ -1,6 +1,6 @@
 {
   "name": "chakra-middleware",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Priority-aware adaptive load shedding for Node.js: keeps critical routes alive when capacity runs short",
   "type": "commonjs",
   "main": "dist/index.js",
