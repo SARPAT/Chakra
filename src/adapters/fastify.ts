@@ -58,6 +58,9 @@ export function fastifyPlugin(
         addUnlessConfigured(table, method, route.url, rule);
     });
 
+    // With mode 'off' CHAKRA is a pure pass-through: add no per-request hooks at all.
+    if ((core as { mode?: string }).mode === 'off') return done();
+
     // Routes added before this plugin loaded (e.g. `app.register(c.fastify)` without
     // await) miss onRoute; learn their tag from the matched route on first request.
     const learned = new Set<string>();
