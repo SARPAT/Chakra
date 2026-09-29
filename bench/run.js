@@ -157,11 +157,14 @@ function markdown(r) {
 }
 
 async function main() {
-  const results = { machine: machine() };
+  // A partial run (BENCH_ONLY) keeps the other sections from the last results.json.
+  const file = path.join(__dirname, 'results.json');
+  const previous = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : {};
+  const results = { ...previous, machine: machine() };
   if (ONLY.includes('micro')) results.micro = micro();
   if (ONLY.includes('overhead')) results.overhead = await require('./overhead').main();
   if (ONLY.includes('overload')) results.overload = await require('./overload').main();
-  fs.writeFileSync(path.join(__dirname, 'results.json'), JSON.stringify(results, null, 2) + '\n');
+  fs.writeFileSync(file, JSON.stringify(results, null, 2) + '\n');
   fs.writeFileSync(path.join(__dirname, 'RESULTS.md'), markdown(results));
   console.log(markdown(results));
 }
