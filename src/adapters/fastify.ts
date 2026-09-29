@@ -8,6 +8,7 @@
 // matched pattern is known per request. The plugin skips encapsulation, so its
 // hooks apply to routes in child plugins too. Fastify is only a type import.
 
+import type { ServerResponse } from 'node:http';
 import type { FastifyInstance, FastifyPluginCallback, FastifyReply, FastifyRequest } from 'fastify';
 import type {
   AdmissionCore,
@@ -39,7 +40,12 @@ export interface FastifyAdapterOptions {
 }
 
 const kDecision = Symbol('chakra.decision');
-type Req = FastifyRequest & { [kDecision]: AdmitDecision | null };
+type Res = ServerResponse & { [kDecision]?: AdmitDecision };
+
+/** Shared 'close' listener: no closure per request. 'close' also fires after a normal finish. */
+function onClose(this: Res): void {
+  this[kDecision]!.done(this.statusCode, !this.writableEnded);
+}
 
 export function fastifyPlugin(
   core: AdmissionCore,
@@ -48,7 +54,6 @@ export function fastifyPlugin(
 ): FastifyPluginCallback {
   const plugin: FastifyPluginCallback = (app: FastifyInstance, _opts, done) => {
     app.decorateRequest('chakra', null);
-    app.decorateRequest(kDecision, null);
 
     app.addHook('onRoute', (route) => {
       const tag = route.config?.chakra;
@@ -97,20 +102,12 @@ export function fastifyPlugin(
           return;
         }
         request.chakra = decision.info;
-        (request as Req)[kDecision] = decision;
+        const res = reply.raw as Res;
+        res[kDecision] = decision;
+        res.once('close', onClose);
         next();
       },
     );
-
-    app.addHook('onResponse', (request, reply, next) => {
-      (request as Req)[kDecision]?.done(reply.statusCode, false);
-      next();
-    });
-
-    app.addHook('onRequestAbort', (request, next) => {
-      (request as Req)[kDecision]?.done(499, true);
-      next();
-    });
 
     done();
   };
