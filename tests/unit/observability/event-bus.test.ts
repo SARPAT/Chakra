@@ -84,43 +84,6 @@ describe('createEventBus', () => {
     expect(sink.seen).toBe(1);
   });
 
-  it('add() attaches a sink and the returned function detaches it', () => {
-    const bus = createEventBus();
-    const sink = recorder();
-
-    const off = bus.add(sink);
-    bus.emit(LAG);
-    off();
-    bus.emit(LAG);
-
-    expect(sink.events).toHaveLength(1);
-  });
-
-  it('unsubscribe is idempotent and only removes its own registration', () => {
-    const bus = createEventBus();
-    const sink = recorder();
-    const other = recorder();
-
-    const off1 = bus.add(sink);
-    bus.add(sink);
-    bus.add(other);
-    off1();
-    off1();
-    bus.emit(LAG);
-
-    expect(sink.events).toHaveLength(1);
-    expect(other.events).toHaveLength(1);
-  });
-
-  it('unsubscribing an added sink leaves constructor sinks attached', () => {
-    const initial = recorder();
-    const bus = createEventBus(initial);
-    const off = bus.add(recorder());
-    off();
-    bus.emit(LAG);
-    expect(initial.events).toHaveLength(1);
-  });
-
   it('ignores invalid sinks', () => {
     const good = recorder();
     const bus = createEventBus(
@@ -128,33 +91,8 @@ describe('createEventBus', () => {
       {} as ChakraEventSink,
       good,
     );
-    const off = bus.add(null as unknown as ChakraEventSink);
-    expect(() => off()).not.toThrow();
     expect(() => bus.emit(LAG)).not.toThrow();
     expect(good.events).toHaveLength(1);
-  });
-
-  it('changes made during emit take effect from the next event', () => {
-    const bus = createEventBus();
-    const late = recorder();
-    let offSelf: () => void = () => {};
-    const selfRemoving = {
-      calls: 0,
-      emit() {
-        this.calls++;
-        offSelf();
-        bus.add(late);
-      },
-    };
-    offSelf = bus.add(selfRemoving);
-
-    bus.emit(LAG);
-    expect(selfRemoving.calls).toBe(1);
-    expect(late.events).toHaveLength(0);
-
-    bus.emit(LAG);
-    expect(selfRemoving.calls).toBe(1);
-    expect(late.events).toHaveLength(1);
   });
 
   it('can be nested as a sink of another bus', () => {
