@@ -5,6 +5,7 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
@@ -71,8 +72,8 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Preview package contents
-        run: npm pack --dry-run
+      - name: Check package (zero deps, exports, size)
+        run: npm run check:package
 
       - name: Pack tarball
         id: pack
@@ -96,6 +97,10 @@ jobs:
       - name: Require installed package
         working-directory: ${{ steps.consumer.outputs.dir }}
         run: node -e "require('chakra-middleware')"
+
+      - name: Run installed CLI
+        working-directory: ${{ steps.consumer.outputs.dir }}
+        run: npx --no-install chakra --help
 
       - name: Verify non-TS assets from src/ are shipped in dist/
         env:
