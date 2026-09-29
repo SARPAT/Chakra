@@ -65,8 +65,19 @@ describe('AdaptiveLimiter admission', () => {
       normal: 0,
       sheddable: 0,
     });
-    expect(limiter.acquire('normal').admitted).toBe(false);
     expect(limiter.acquire('critical').admitted).toBe(true);
+    expect(limiter.acquire('normal').admitted).toBe(false);
+  });
+
+  it('admits one probe when idle, so a zero band can recover', () => {
+    const { limiter, algorithm, clock } = setup({}, 1);
+    const probe = limiter.acquire('sheddable');
+    expect(probe).toMatchObject({ admitted: true, degraded: true });
+    expect(limiter.acquire('sheddable').admitted).toBe(false);
+    algorithm.next = 20;
+    clock.t = 1000;
+    probe.token!.release('success');
+    expect(limiter.snapshot().bandLimits.sheddable).toBe(10);
   });
 
   it('marks admissions past degradeAt of the band as degraded', () => {

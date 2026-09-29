@@ -10,12 +10,6 @@ export const consoleLogger: Logger = Object.freeze({
   error: (msg: string) => console.error(`${TAG} ${msg}`),
 });
 
-export const silentLogger: Logger = Object.freeze({
-  info: () => {},
-  warn: () => {},
-  error: () => {},
-});
-
 /**
  * Wrap a logger so each distinct key is logged at most once.
  * Used on the hot path so a recurring failure cannot flood the host's logs.

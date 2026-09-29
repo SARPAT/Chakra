@@ -48,7 +48,8 @@ export function expressMiddleware(
     }
     const decision = core.decide({
       method: req.method,
-      path: req.path,
+      // req.path is relative to where the middleware is mounted; rules use full paths.
+      path: req.baseUrl ? req.baseUrl + req.path : req.path,
       headers: req.headers,
       user: (req as { user?: unknown }).user,
       raw: req,
@@ -102,8 +103,14 @@ function walk(stack: Layer[] | undefined, prefix: string, table: RouteTable): vo
         : Object.keys(layer.route.methods).map((m) => m.toUpperCase());
       const paths = Array.isArray(layer.route.path) ? layer.route.path : [layer.route.path];
       for (const p of paths) {
-        if (typeof p === 'string')
-          for (const m of methods) addUnlessConfigured(table, m, prefix + p, tag);
+        if (typeof p !== 'string') continue;
+        for (const m of methods) {
+          try {
+            addUnlessConfigured(table, m, prefix + p, tag);
+          } catch {
+            // One bad route must not stop discovery of the rest.
+          }
+        }
       }
     } else if (layer.handle?.stack) {
       const mount = mountPath(layer);
