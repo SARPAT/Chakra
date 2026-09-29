@@ -75,22 +75,33 @@ function markdown(r) {
   }
   if (r.overhead) {
     const o = r.overhead;
+    const rows = (list, withShed) =>
+      list.map((x) => [
+        x.framework,
+        x.protection === 'none' ? 'off' : 'on',
+        x.rps.toLocaleString('en'),
+        x.rpsDelta || '—',
+        ms(x.p50),
+        ms(x.p99),
+        ...(withShed ? [`${x.shedPct}%`] : []),
+      ]);
+    const head = ['Framework', 'CHAKRA', 'req/s', 'Δ req/s', 'p50', 'p99'];
     out.push(
-      '## Middleware overhead under normal load',
+      '## Middleware overhead',
       '',
-      `\`node bench/overhead.js\`: autocannon, ${o.connections} connections, ${o.duration} s per run after a 3 s warm-up, median of ${o.rounds} interleaved rounds, \`GET /hello\` returning a small JSON body. Every request is admitted.`,
+      `\`node bench/overhead.js\`: autocannon, ${o.connections} connections, \`GET /hello\` returning a small JSON body, ${o.duration} s per run after a 3 s warm-up, median of ${o.rounds} interleaved rounds. autocannon reports latency in whole milliseconds.`,
       '',
-      table(
-        ['Framework', 'CHAKRA', 'req/s', 'Δ req/s', 'p50', 'p99'],
-        o.results.map((x) => [
-          x.framework,
-          x.protection === 'none' ? 'off' : 'on',
-          Math.round(x.rps).toLocaleString('en'),
-          x.rpsDelta || '—',
-          ms(x.p50),
-          ms(x.p99),
-        ]),
-      ),
+      '**Maximum throughput.** Closed loop at saturation. CHAKRA runs in dry-run mode so it does its full per-request work (decide, limiter, metrics) but admits everything.',
+      '',
+      table(head, rows(o.max, false)),
+      '',
+      `**Normal load.** Paced at ${o.loadShare * 100}% of the raw framework's maximum (${Object.entries(
+        o.rates,
+      )
+        .map(([f, n]) => `${f} ${n.toLocaleString('en')} req/s`)
+        .join(', ')}), CHAKRA enforcing.`,
+      '',
+      table([...head, 'shed'], rows(o.load, true)),
       '',
     );
   }
