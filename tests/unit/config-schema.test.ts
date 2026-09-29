@@ -122,6 +122,24 @@ describe('validation', () => {
     ]);
   });
 
+  it('rejects shed responses that would fail when written', () => {
+    const circular: Record<string, unknown> = {};
+    circular.self = circular;
+    const problems = problemsOf(() =>
+      resolveOptions(
+        {
+          shedResponse: { headers: { 'X-Bad': 'a\r\nSet-Cookie: x' } },
+          routes: { 'GET /a': { priority: 'sheddable', fallback: { body: circular } } },
+        },
+        {},
+      ),
+    );
+    expect(problems).toEqual([
+      'routes["GET /a"].fallback.body must be a string, a Buffer or JSON-serialisable',
+      'shedResponse.headers["X-Bad"] is not a valid HTTP header',
+    ]);
+  });
+
   it('rejects a logger without the required methods', () => {
     expect(problemsOf(() => resolveOptions({ logger: { info() {} } } as never, {}))).toEqual([
       'logger must be false or an object with info, warn and error functions',

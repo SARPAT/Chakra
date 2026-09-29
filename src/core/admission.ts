@@ -181,7 +181,8 @@ export function createAdmissionCore(deps: AdmissionCoreDeps): ControllableAdmiss
 
       const info: ChakraRequestInfo = {
         priority,
-        degraded: admitted && degraded,
+        // Dry-run only reports: handlers must behave exactly as without CHAKRA.
+        degraded: !dryRun && admitted && degraded,
         wouldShed: dryRun && !admitted,
         pressure: snap.pressure,
         mode,

@@ -210,6 +210,13 @@ describe('dry-run mode', () => {
     expect(releases).toEqual(['success']);
   });
 
+  it('reports a degrade without marking the request degraded', () => {
+    const { limiter } = scriptedLimiter({ normal: 'degrade' });
+    const { core, events } = setup({ mode: 'dry-run' }, limiter);
+    expect(core.decide(ctx('GET', '/')).info.degraded).toBe(false);
+    expect(events[0]).toMatchObject({ decision: 'degraded', dryRun: true });
+  });
+
   it('is overridden by CHAKRA_MODE', () => {
     const resolved = resolveOptions({ mode: 'enforce', logger: false }, { CHAKRA_MODE: 'dry-run' });
     expect(resolved.mode).toBe('dry-run');
