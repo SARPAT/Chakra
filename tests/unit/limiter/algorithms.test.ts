@@ -71,7 +71,7 @@ describe('GradientLimit', () => {
     // rise enough that 2x the original latency also becomes tolerated.
     run(g, 400, { avgRttMs: 14 });
     const before = g.limit;
-    g.update(win({ avgRttMs: 20 }));
+    g.update(win({ avgRttMs: 20, maxInFlight: g.limit }));
     expect(g.limit).toBeLessThan(before);
   });
 
