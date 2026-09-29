@@ -64,7 +64,8 @@ export function chakra(options: ChakraOptions = {}): ChakraInstance {
   const limiter: Limiter = createLimiter(resolved.limiter, sink);
   const table = createRouteTable({ ...resolved.routes });
   const core = createAdmissionCore({ options: resolved, limiter, resolver: table, sink });
-  const express = expressMiddleware(core, table);
+  const logger = resolved.logger;
+  const express = expressMiddleware(core, table, (msg) => logger && logger.warn(msg));
 
   if (resolved.mode !== 'off') limiter.start();
   if (resolved.logger) {
