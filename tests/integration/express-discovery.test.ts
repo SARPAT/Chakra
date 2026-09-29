@@ -52,3 +52,23 @@ describe('Express route discovery', () => {
     expect(warnings.filter((w) => w.includes('was not discovered'))).toHaveLength(1);
   });
 });
+
+describe('Express mounted below /', () => {
+  it('matches rules against the full path', async () => {
+    const c = chakra({ logger: false, routes: { 'POST /api/checkout': 'critical' } });
+    c.setOverrides({ closedBands: ['normal'] });
+    const app = express();
+    app.use('/api', c);
+    app.post('/api/checkout', (_req, res) => res.end('ok'));
+
+    const server = app.listen(0, '127.0.0.1');
+    await new Promise((r) => server.once('listening', r));
+    const { port } = server.address() as { port: number };
+    const res = await fetch(`http://127.0.0.1:${port}/api/checkout`, { method: 'POST' });
+    server.closeAllConnections();
+    await new Promise<void>((r) => server.close(() => r()));
+    c.close();
+
+    expect(res.status).toBe(200);
+  });
+});
