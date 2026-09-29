@@ -44,3 +44,11 @@ The design is recorded in [docs/adr/](docs/adr/). The shared contracts in `src/t
 ## Reporting bugs
 
 Open an issue with the Node.js version, framework and version, your CHAKRA options (without secrets) and the smallest reproduction you can manage. For security issues, follow [SECURITY.md](SECURITY.md) instead.
+
+## Releasing
+
+Maintainers only. Releases are published to npm by the release workflow when a version tag is pushed.
+
+1. Make sure the `NPM_TOKEN` repository secret is set.
+2. Bump `version` in `package.json` and move the `Unreleased` notes in `CHANGELOG.md` under the new version.
+3. Merge to `main`, then push a matching tag, for example `git tag v0.2.0 && git push origin v0.2.0`. The workflow fails if the tag does not match `package.json`.
