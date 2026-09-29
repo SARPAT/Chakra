@@ -56,7 +56,9 @@ export function createAdmissionCore(deps: AdmissionCoreDeps): ControllableAdmiss
   const mode = options.mode;
   const dryRun = mode === 'dry-run';
   const emitting = sink !== NOOP_SINK;
-  const log = onceLogger(options.logger === false ? { info() {}, warn() {}, error() {} } : options.logger);
+  const log = onceLogger(
+    options.logger === false ? { info() {}, warn() {}, error() {} } : options.logger,
+  );
 
   let closedBands: ReadonlySet<Priority> = new Set();
   const defaultResponse = resolveShedResponse(options.shedResponse);
@@ -64,7 +66,13 @@ export function createAdmissionCore(deps: AdmissionCoreDeps): ControllableAdmiss
 
   const passThrough: Decision = Object.freeze({
     outcome: 'admit',
-    info: Object.freeze({ priority: options.defaultPriority, degraded: false, wouldShed: false, pressure: 0, mode }),
+    info: Object.freeze({
+      priority: options.defaultPriority,
+      degraded: false,
+      wouldShed: false,
+      pressure: 0,
+      mode,
+    }),
     done: noop,
   });
 
@@ -91,7 +99,10 @@ export function createAdmissionCore(deps: AdmissionCoreDeps): ControllableAdmiss
         const p = options.priority(ctx);
         if (p !== undefined) {
           if (isPriority(p)) return p;
-          log.warnOnce('priority-value', `priority() returned an unknown value "${String(p)}"; ignored`);
+          log.warnOnce(
+            'priority-value',
+            `priority() returned an unknown value "${String(p)}"; ignored`,
+          );
         }
       } catch (err) {
         log.warnOnce('priority-fn', `priority() threw and was ignored: ${describe(err)}`);
@@ -155,21 +166,23 @@ export function createAdmissionCore(deps: AdmissionCoreDeps): ControllableAdmiss
 
       const snap = limiter.snapshot();
       const decision: AdmissionDecision = !admitted ? 'shed' : degraded ? 'degraded' : 'admitted';
-      if (emitting) emit({
-        type: 'admission',
-        decision,
-        band: priority,
-        route,
-        dryRun,
-        reason,
-        limit: snap.limit,
-        inFlight: snap.inFlight,
-        at: start,
-      });
+      if (emitting)
+        emit({
+          type: 'admission',
+          decision,
+          band: priority,
+          route,
+          dryRun,
+          reason,
+          limit: snap.limit,
+          inFlight: snap.inFlight,
+          at: start,
+        });
 
       const info: ChakraRequestInfo = {
         priority,
-        degraded: admitted && degraded,
+        // Dry-run only reports: handlers must behave exactly as without CHAKRA.
+        degraded: !dryRun && admitted && degraded,
         wouldShed: dryRun && !admitted,
         pressure: snap.pressure,
         mode,
@@ -177,7 +190,13 @@ export function createAdmissionCore(deps: AdmissionCoreDeps): ControllableAdmiss
 
       if (admitted || dryRun) return admit(info, token);
 
-      if (emitting) emit({ type: 'shed_complete', band: priority, route, durationMs: performance.now() - start });
+      if (emitting)
+        emit({
+          type: 'shed_complete',
+          band: priority,
+          route,
+          durationMs: performance.now() - start,
+        });
       return { outcome: 'shed', info, response: shedResponseFor(rule) };
     } catch (err) {
       log.warnOnce('decide', `admission failed and the request was let through: ${describe(err)}`);

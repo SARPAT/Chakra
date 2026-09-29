@@ -58,9 +58,26 @@ export function fastifyPlugin(
         addUnlessConfigured(table, method, route.url, rule);
     });
 
+    // Routes added before this plugin loaded (e.g. `app.register(c.fastify)` without
+    // await) miss onRoute; learn their tag from the matched route on first request.
+    const learned = new Set<string>();
+
     app.addHook(
       options.hook ?? 'onRequest',
       (request: FastifyRequest, reply: FastifyReply, next: () => void) => {
+        const tag = request.routeOptions.config?.chakra;
+        if (tag !== undefined && request.routeOptions.url !== undefined) {
+          const key = request.method + ' ' + request.routeOptions.url;
+          if (!learned.has(key)) {
+            learned.add(key);
+            const rule = typeof tag === 'string' ? { priority: tag } : tag;
+            try {
+              addUnlessConfigured(table, request.method, request.routeOptions.url, rule);
+            } catch {
+              // An invalid tag must not fail the request; the route keeps its default.
+            }
+          }
+        }
         const url = request.url;
         const q = url.indexOf('?');
         const decision = core.decide({

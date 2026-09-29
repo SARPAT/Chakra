@@ -1,6 +1,6 @@
 {
   "name": "chakra-middleware",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Priority-aware adaptive load shedding for Node.js: keeps critical routes alive when capacity runs short",
   "type": "commonjs",
   "main": "dist/index.js",
@@ -31,7 +31,8 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "prepublishOnly": "npm run typecheck && npm run lint && npm test && npm run build"
+    "check:package": "node scripts/check-package.mjs",
+    "prepublishOnly": "npm run typecheck && npm run lint && npm run format:check && npm test && npm run build && npm run check:package"
   },
   "keywords": [
     "middleware",

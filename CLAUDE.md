@@ -51,7 +51,6 @@ src/
 ├── types.ts               shared contracts (ADR 0001)
 ├── config/schema.ts       ChakraOptions, validation, CHAKRA_MODE
 ├── core/admission.ts      framework-free decide(), band overrides
-├── core/defaults.ts       admit-all limiter and exact-match resolver (stand-ins and test helpers)
 ├── limiter/               adaptive concurrency limiter (Gradient2 / AIMD, priority bands, event-loop sampler)
 ├── priority/              route table, route() tagging, emergency presets
 ├── adapters/express.ts    Express adapter

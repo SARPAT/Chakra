@@ -33,7 +33,13 @@ describe('resolveOptions defaults', () => {
             '* /health': 'critical',
           },
           priority: () => undefined,
-          limiter: { algorithm: 'aimd', initialLimit: 10, minLimit: 2, maxLimit: 100, bandShares: { sheddable: 0.3 } },
+          limiter: {
+            algorithm: 'aimd',
+            initialLimit: 10,
+            minLimit: 2,
+            maxLimit: 100,
+            bandShares: { sheddable: 0.3 },
+          },
           shedResponse: { status: 429, retryAfterSeconds: 5, headers: { 'X-Reason': 'busy' } },
           metrics: { prefix: 'shop_', maxRoutes: 50 },
           logger: false,
@@ -116,6 +122,24 @@ describe('validation', () => {
     ]);
   });
 
+  it('rejects shed responses that would fail when written', () => {
+    const circular: Record<string, unknown> = {};
+    circular.self = circular;
+    const problems = problemsOf(() =>
+      resolveOptions(
+        {
+          shedResponse: { headers: { 'X-Bad': 'a\r\nSet-Cookie: x' } },
+          routes: { 'GET /a': { priority: 'sheddable', fallback: { body: circular } } },
+        },
+        {},
+      ),
+    );
+    expect(problems).toEqual([
+      'routes["GET /a"].fallback.body must be a string, a Buffer or JSON-serialisable',
+      'shedResponse.headers["X-Bad"] is not a valid HTTP header',
+    ]);
+  });
+
   it('rejects a logger without the required methods', () => {
     expect(problemsOf(() => resolveOptions({ logger: { info() {} } } as never, {}))).toEqual([
       'logger must be false or an object with info, warn and error functions',
@@ -123,6 +147,8 @@ describe('validation', () => {
   });
 
   it('throws ChakraConfigError with a readable message', () => {
-    expect(() => resolveOptions({ mode: 'x' } as never, {})).toThrow(/Invalid CHAKRA options:\n {2}- mode/);
+    expect(() => resolveOptions({ mode: 'x' } as never, {})).toThrow(
+      /Invalid CHAKRA options:\n {2}- mode/,
+    );
   });
 });
