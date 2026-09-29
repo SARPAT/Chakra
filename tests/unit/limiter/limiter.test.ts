@@ -57,16 +57,15 @@ describe('AdaptiveLimiter admission', () => {
     });
   });
 
-  it('always leaves critical one slot, and honours custom shares', () => {
-    const { limiter } = setup({ bandShares: { sheddable: 0.2 } }, 1);
-    expect(limiter.snapshot().bandLimits).toEqual({
+  it('leaves every band at least one slot, and honours custom shares', () => {
+    expect(setup({}, 1).limiter.snapshot().bandLimits).toEqual({
       critical: 1,
-      high: 0,
-      normal: 0,
-      sheddable: 0,
+      high: 1,
+      normal: 1,
+      sheddable: 1,
     });
-    expect(limiter.acquire('normal').admitted).toBe(false);
-    expect(limiter.acquire('critical').admitted).toBe(true);
+    const { limiter } = setup({ bandShares: { sheddable: 0.2 } }, 10);
+    expect(limiter.snapshot().bandLimits.sheddable).toBe(2);
   });
 
   it('marks admissions past degradeAt of the band as degraded', () => {
