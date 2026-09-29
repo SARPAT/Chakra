@@ -43,7 +43,11 @@ async function expressServer(
   await new Promise((r) => server.once('listening', r));
   return {
     port: (server.address() as AddressInfo).port,
-    close: () => new Promise((r) => server.close(r)).then(() => server.closeAllConnections()),
+    // Node 18's close() waits for idle keep-alive sockets, so drop them first.
+    close: () => {
+      server.closeAllConnections();
+      return new Promise((r) => server.close(r));
+    },
   };
 }
 
