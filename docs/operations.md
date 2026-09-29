@@ -24,7 +24,7 @@ Closed bands are shed with reason `band_closed`. Wire these calls to your own au
 - **Limit vs in-flight.** In-flight well below the limit means headroom. In-flight pinned at the limit with shedding means the process is saturated.
 - **Concurrency limit falling.** Latency or event-loop delay rose. The limiter backs off within one sampling window (25 ms to 1 s).
 - **Event-loop lag high, latency normal.** CPU-bound work is blocking the loop. The limiter shrinks on lag above `maxEventLoopDelayMs` even before latency shows it.
-- **Shed latency.** Time to answer a shed request. It should be tens of microseconds; a shed request never reaches your handler.
+- **Shed latency.** Time to answer a shed request. It should stay far below your normal response time; a shed request never reaches your handler.
 
 ## FAQ
 
