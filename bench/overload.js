@@ -55,19 +55,26 @@ function window(rec, r, from, to) {
 }
 
 /**
- * Time from spike start until critical traffic is healthy again: the first bucket from
- * which every later spike bucket has >= 99% critical success and p99 <= SLO_MS.
- * 0 means it never degraded; null means it never recovered during the spike.
+ * Time from spike start until critical traffic is healthy: the first 250 ms step from
+ * which the critical requests sent for the rest of the spike, taken together, have
+ * >= 99% success and p99 <= SLO_MS. 0 means it never suffered; null means it never did.
  */
-function reactionMs(rec) {
-  const buckets = [];
+function recoveredMs(rec) {
   for (let t = SPIKE_START; t < SPIKE_END; t += BUCKET_MS) {
-    const w = window(rec, 0, t, t + BUCKET_MS);
-    buckets.push(w.n === 0 || (w.successRate >= 0.99 && w.p99 <= SLO_MS));
+    const w = window(rec, 0, t, SPIKE_END);
+    if (w.successRate >= 0.99 && w.p99 <= SLO_MS) return t - SPIKE_START;
   }
-  let k = buckets.length;
-  while (k > 0 && buckets[k - 1]) k--;
-  return k === buckets.length ? null : k * BUCKET_MS;
+  return null;
+}
+
+/** Time from spike start to the first request answered with 503; null if none was. */
+function firstShedMs(rec) {
+  let first = Infinity;
+  for (let i = 0; i < rec.count; i++) {
+    if (rec.status[i] === 503 && rec.sentAt[i] >= SPIKE_START)
+      first = Math.min(first, rec.sentAt[i]);
+  }
+  return first === Infinity ? null : round(first - SPIKE_START, 0);
 }
 
 async function runMode(mode) {
@@ -96,7 +103,8 @@ async function runMode(mode) {
       normalSuccess: round(spike[1].successRate * 100),
       sheddableSuccess: round(spike[2].successRate * 100),
       goodputRps: round(goodput, 0),
-      reactionMs: reactionMs(rec),
+      firstShedMs: firstShedMs(rec),
+      recoveredMs: recoveredMs(rec),
       routes: spike.map((s) => ({
         ...s,
         successRate: round(s.successRate * 100),

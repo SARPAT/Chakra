@@ -39,9 +39,10 @@ failures. Three servers get the same traffic:
 - **CHAKRA**: default options plus the three route priorities.
 
 Reported for requests sent during the spike: success rate and p50/p99 latency per
-priority, goodput (2xx per second), and time from spike start until critical traffic is
-healthy again (every later 250 ms window has ≥ 99% success and p99 ≤ 250 ms; "never" if
-that does not happen before the spike ends).
+priority, goodput (2xx per second), time from spike start to the first 503 (how fast
+protection reacts), and time until critical traffic is healthy (from that point to the end
+of the spike, critical requests together have ≥ 99% success and p99 ≤ 250 ms; "never" if
+no such point exists).
 
 ## Keeping it honest
 

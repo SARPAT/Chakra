@@ -84,7 +84,7 @@ function markdown(r) {
         ['Framework', 'CHAKRA', 'req/s', 'Δ req/s', 'p50', 'p99'],
         o.results.map((x) => [
           x.framework,
-          x.protection === 'none' ? 'off' : `on (${x.adapter} adapter)`,
+          x.protection === 'none' ? 'off' : 'on',
           Math.round(x.rps).toLocaleString('en'),
           x.rpsDelta || '—',
           ms(x.p50),
@@ -118,21 +118,23 @@ function markdown(r) {
           'normal success',
           'sheddable success',
           'goodput (2xx/s)',
-          `time to critical p99 ≤ ${o.sloMs} ms`,
+          'first 503 after spike',
+          `critical healthy after (≥ 99% ok, p99 ≤ ${o.sloMs} ms)`,
         ],
         o.results.map((x) => [
           x.mode === 'none'
             ? 'none'
             : x.mode === 'cap'
               ? `fixed cap (${o.capacity.fixedCap})`
-              : `CHAKRA (${x.adapter} adapter)`,
+              : 'CHAKRA',
           `${x.criticalSuccess}%`,
           ms(x.criticalP50),
           ms(x.criticalP99),
           `${x.normalSuccess}%`,
           `${x.sheddableSuccess}%`,
           x.goodputRps,
-          x.reactionMs === null ? 'never' : ms(x.reactionMs),
+          x.firstShedMs === null ? 'never' : ms(x.firstShedMs),
+          x.recoveredMs === null ? 'never' : ms(x.recoveredMs),
         ]),
       ),
       '',
