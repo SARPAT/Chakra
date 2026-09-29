@@ -1,5 +1,5 @@
 import { createAdmissionCore } from '../../src/core/admission';
-import { admitAllLimiter, exactRouteResolver } from '../../src/core/defaults';
+import { createRouteTable } from '../../src/priority';
 import { resolveOptions, type ChakraOptions } from '../../src/config/schema';
 import {
   UNMATCHED_ROUTE,
@@ -13,6 +13,15 @@ import {
 } from '../../src/types';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function admitAllLimiter(): Limiter {
+  return {
+    acquire: () => ({ admitted: true, degraded: false, token: { release: () => {} } }),
+    snapshot: () => SNAPSHOT,
+    start: () => {},
+    stop: () => {},
+  };
+}
 
 const SNAPSHOT: LimiterSnapshot = {
   limit: 10,
@@ -47,7 +56,7 @@ function setup(options: ChakraOptions = {}, limiter: Limiter = admitAllLimiter()
   const core = createAdmissionCore({
     options: resolved,
     limiter,
-    resolver: exactRouteResolver(resolved.routes),
+    resolver: createRouteTable({ ...resolved.routes }),
     sink: { emit: (e) => events.push(e) },
   });
   return { core, events };
