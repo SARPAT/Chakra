@@ -71,7 +71,11 @@ export function fastifyPlugin(
           if (!learned.has(key)) {
             learned.add(key);
             const rule = typeof tag === 'string' ? { priority: tag } : tag;
-            addUnlessConfigured(table, request.method, request.routeOptions.url, rule);
+            try {
+              addUnlessConfigured(table, request.method, request.routeOptions.url, rule);
+            } catch {
+              // An invalid tag must not fail the request; the route keeps its default.
+            }
           }
         }
         const url = request.url;
