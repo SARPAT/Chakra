@@ -1,6 +1,12 @@
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { chakra, ChakraConfigError, type ChakraEvent, type MetricsExporter } from '../../src/index';
+import {
+  chakra,
+  ChakraConfigError,
+  createOtelSink,
+  type ChakraEvent,
+  type MetricsExporter,
+} from '../../src/index';
 
 describe('chakra()', () => {
   it('builds a working instance with zero config', () => {
@@ -23,6 +29,19 @@ describe('chakra()', () => {
     };
     const c = chakra({ logger: { info: boom, warn: boom, error: boom } });
     expect(c.decide({ method: 'GET', path: '/', headers: {} }).outcome).toBe('admit');
+    c.close();
+  });
+
+  it('records to OpenTelemetry through the exported sink', () => {
+    const counts: string[] = [];
+    const meter = {
+      createCounter: (name: string) => ({ add: () => counts.push(name) }),
+      createHistogram: () => ({ record: () => {} }),
+      createObservableGauge: () => ({ addCallback: () => {} }),
+    };
+    const c = chakra({ logger: false, metrics: createOtelSink(meter) });
+    c.decide({ method: 'GET', path: '/', headers: {} });
+    expect(counts).toEqual(['chakra.requests']);
     c.close();
   });
 
