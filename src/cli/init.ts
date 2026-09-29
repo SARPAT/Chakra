@@ -56,7 +56,12 @@ export function scanRoutes(dir: string): Record<string, Priority> {
       const p = join(d, name);
       const st = lstatSync(p); // symlinks are skipped: no loops, no dangling links
       if (st.isDirectory()) walk(p);
-      else if (SOURCE.test(name) && !name.endsWith('.d.ts') && st.size <= MAX_BYTES) {
+      else if (
+        st.isFile() &&
+        SOURCE.test(name) &&
+        !name.endsWith('.d.ts') &&
+        st.size <= MAX_BYTES
+      ) {
         files++;
         for (const [, m, , path, tag] of readFileSync(p, 'utf8').matchAll(ROUTE)) {
           const method = m.toUpperCase();
