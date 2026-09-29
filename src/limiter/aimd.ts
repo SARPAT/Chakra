@@ -32,13 +32,17 @@ export class AimdLimit implements LimitAlgorithm {
 
   update(w: WindowSummary): number {
     const sampled = w.sampleCount > 0 && w.avgRttMs > 0;
-    if (sampled) this.minRtt = Math.min(this.minRtt, w.avgRttMs);
-    if (w.lagPressure > 1 || (sampled && w.avgRttMs > this.tolerance * this.minRtt)) {
+    // As in GradientLimit: sub-ms latencies are floored, and latency only
+    // counts as congestion while at least half the limit is in use.
+    const rtt = Math.max(1, w.avgRttMs);
+    const busy = w.maxInFlight * 2 >= this.limit;
+    if (sampled) this.minRtt = Math.min(this.minRtt, rtt);
+    if (w.lagPressure > 1 || (sampled && busy && rtt > this.tolerance * this.minRtt)) {
       this.congestion = 1;
       return (this.limit = Math.max(this.min, Math.floor(this.limit * this.backoff)));
     }
     if (sampled) this.congestion = 0;
-    if (sampled && w.maxInFlight * 2 >= this.limit) this.limit = Math.min(this.max, this.limit + 1);
+    if (sampled && busy) this.limit = Math.min(this.max, this.limit + 1);
     return this.limit;
   }
 }
