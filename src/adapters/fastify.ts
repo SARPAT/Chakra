@@ -8,17 +8,15 @@
 // matched pattern is known per request. The plugin skips encapsulation, so its
 // hooks apply to routes in child plugins too. Fastify is only a type import.
 
-import type { ServerResponse } from 'node:http';
 import type { FastifyInstance, FastifyPluginCallback, FastifyReply, FastifyRequest } from 'fastify';
 import type {
   AdmissionCore,
-  AdmitDecision,
   ChakraRequestInfo,
   Priority,
   RouteRuleInput,
   RouteTable,
 } from '../types';
-import { addUnlessConfigured, serialiseShed } from './shared';
+import { addUnlessConfigured, releaseOnCompletion, serialiseShed } from './shared';
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -37,14 +35,6 @@ export interface FastifyAdapterOptions {
    * when priority depends on `request.user` set by an auth hook.
    */
   hook?: 'onRequest' | 'preHandler';
-}
-
-const kDecision = Symbol('chakra.decision');
-type Res = ServerResponse & { [kDecision]?: AdmitDecision };
-
-/** Shared 'close' listener: no closure per request. 'close' also fires after a normal finish. */
-function onClose(this: Res): void {
-  this[kDecision]!.done(this.statusCode, !this.writableEnded);
 }
 
 interface RouteConfig {
@@ -121,9 +111,7 @@ export function fastifyPlugin(
           return;
         }
         request.chakra = decision.info;
-        const res = reply.raw as Res;
-        res[kDecision] = decision;
-        res.once('close', onClose);
+        releaseOnCompletion(reply.raw, decision);
         next();
       },
     );
