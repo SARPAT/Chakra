@@ -48,7 +48,8 @@ export function expressMiddleware(
     }
     const decision = core.decide({
       method: req.method,
-      path: req.path,
+      // req.path is relative to where the middleware is mounted; rules use full paths.
+      path: req.baseUrl ? req.baseUrl + req.path : req.path,
       headers: req.headers,
       user: (req as { user?: unknown }).user,
       raw: req,
