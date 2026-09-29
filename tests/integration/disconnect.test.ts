@@ -7,6 +7,7 @@ import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { expressMiddleware } from '../../src/adapters/express';
 import { fastifyPlugin } from '../../src/adapters/fastify';
+import { ABORT_HOLD_MS } from '../../src/adapters/shared';
 import { harness } from './harness';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -76,4 +77,19 @@ describe.each([
     expect(await status(s.port, '/work')).toBe(200);
     await s.close();
   });
+});
+
+it('releases a slot held by a hung handler after ABORT_HOLD_MS', async () => {
+  const h = harness();
+  const s = await expressServer(h, null);
+  await abandon(s.port, '/work', 20);
+  await sleep(40);
+  expect(h.inFlight.normal).toBe(1);
+  const now = Date.now();
+  const clock = vi.spyOn(Date, 'now').mockReturnValue(now + ABORT_HOLD_MS);
+  await sleep(60);
+  clock.mockRestore();
+  expect(h.inFlight.normal).toBe(0);
+  expect(h.releases).toEqual(['dropped']);
+  await s.close();
 });
