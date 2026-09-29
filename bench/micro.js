@@ -63,15 +63,25 @@ function main() {
     );
     c.close();
   }
-  if (typeof lib.createLimiter === 'function') {
-    const l = lib.createLimiter({});
+  let createLimiter;
+  try {
+    ({ createLimiter } = require('../dist/limiter')); // not part of the public API
+  } catch {
+    // limiter module not built
+  }
+  if (createLimiter) {
+    const l = createLimiter({});
     const bands = ['critical', 'high', 'normal', 'sheddable'];
     results.push(
-      measure('limiter acquire+release', (i) => l.acquire(bands[i & 3]).token?.release('success')),
+      measure('limiter acquire+release', (i) =>
+        l.acquire(bands[i & 3], true).token?.release('success'),
+      ),
     );
     l.stop();
   }
-  const limiter = typeof lib.createLimiter === 'function' ? 'adaptive' : 'admit-all stand-in';
+  const probe = lib.chakra({ logger: false });
+  const limiter = Number.isFinite(probe.snapshot().limit) ? 'adaptive' : 'admit-all stand-in';
+  probe.close();
   return {
     iterations: ITER,
     runs: RUNS,
