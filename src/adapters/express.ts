@@ -10,7 +10,7 @@
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
 import type { AdmissionCore, ChakraRequestInfo, RouteRuleInput, RouteTable } from '../types';
 import { CHAKRA_TAG_CHECK, getRouteTag } from '../priority/route';
-import { addUnlessConfigured, serialiseShed } from './shared';
+import { addUnlessConfigured, releaseOnCompletion, serialiseShed } from './shared';
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -65,8 +65,7 @@ export function expressMiddleware(
     }
     req.chakra = decision.info;
     (req as { [CHAKRA_TAG_CHECK]?: typeof checkTag })[CHAKRA_TAG_CHECK] = checkTag;
-    // 'close' fires after 'finish' too, so one listener covers success and abort.
-    res.once('close', () => decision.done(res.statusCode, !res.writableFinished));
+    releaseOnCompletion(res, decision);
     next();
   };
 }
