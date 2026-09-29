@@ -60,7 +60,7 @@ class Token implements AcquireResult, LimiterToken {
  * Adaptive concurrency limiter with priority bands.
  *
  * A request of band b is admitted while inFlight < floor(limit x share[b])
- * (every band gets at least 1), so lower bands are shed first and leave
+ * (critical always gets at least 1), so lower bands are shed first and leave
  * headroom for higher ones. It is `degraded` when inFlight was already at or
  * past degradeAt of its band's limit. Every release feeds a sample window;
  * each closed window lets the algorithm move the limit. acquire() and
@@ -192,10 +192,7 @@ export class AdaptiveLimiter implements Limiter {
     this.limit = limit;
     for (let i = 0; i < 4; i++) {
       const bandLimit = Math.floor(limit * this.shares[i] + 1e-9);
-      // Every band keeps at least one slot, so none is locked out for good:
-      // an idle process always admits one request, which yields the samples
-      // the limit needs to regrow.
-      this.bandLimits[i] = Math.max(1, bandLimit);
+      this.bandLimits[i] = i === 0 ? Math.max(1, bandLimit) : bandLimit;
       this.degradeFrom[i] = Math.ceil(this.bandLimits[i] * this.degradeAt - 1e-9);
     }
   }
