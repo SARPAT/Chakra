@@ -45,6 +45,7 @@ describe('Express route discovery', () => {
     const { port } = server.address() as { port: number };
     await fetch(`http://127.0.0.1:${port}/u/1/recs`);
     await fetch(`http://127.0.0.1:${port}/u/2/recs`);
+    server.closeAllConnections(); // fetch keep-alive sockets hold close() open on Node 18
     await new Promise<void>((r) => server.close(() => r()));
     c.close();
 
