@@ -1,0 +1,315 @@
+{
+  "machine": {
+    "date": "2026-09-29T01:58:24.726Z",
+    "cpu": "Intel(R) Xeon(R) Processor @ 2.10GHz × 4",
+    "memoryGb": 16,
+    "os": "Linux 6.18.44-fc-v49 x64",
+    "node": "v22.22.2",
+    "commit": "be84508",
+    "versions": {
+      "express": "4.21.2",
+      "fastify": "5.6.1",
+      "autocannon": "8.0.0"
+    }
+  },
+  "micro": {
+    "iterations": 2000000,
+    "runs": 7,
+    "limiter": "adaptive",
+    "gcExposed": true,
+    "results": [
+      {
+        "name": "decide+done (enforce, metrics off)",
+        "nsPerOp": 495.5,
+        "nsMin": 472.7,
+        "bytesPerOp": 22
+      },
+      {
+        "name": "decide+done (enforce, metrics on)",
+        "nsPerOp": 487.6,
+        "nsMin": 457,
+        "bytesPerOp": 166
+      },
+      {
+        "name": "decide+done (dry-run)",
+        "nsPerOp": 561.1,
+        "nsMin": 522.4,
+        "bytesPerOp": 98
+      },
+      {
+        "name": "limiter acquire+release",
+        "nsPerOp": 117.1,
+        "nsMin": 101.6,
+        "bytesPerOp": 112
+      }
+    ]
+  },
+  "overhead": {
+    "duration": 10,
+    "connections": 50,
+    "rounds": 3,
+    "loadShare": 0.5,
+    "rates": {
+      "express": 4498,
+      "fastify": 25442
+    },
+    "max": [
+      {
+        "framework": "express",
+        "protection": "none",
+        "rps": 8996,
+        "p50": 4,
+        "p99": 16,
+        "shedPct": 0,
+        "rpsDelta": ""
+      },
+      {
+        "framework": "express",
+        "protection": "chakra",
+        "rps": 7990,
+        "p50": 5,
+        "p99": 16,
+        "shedPct": 0,
+        "rpsDelta": "-11.2%"
+      },
+      {
+        "framework": "fastify",
+        "protection": "none",
+        "rps": 50883,
+        "p50": 0,
+        "p99": 2,
+        "shedPct": 0,
+        "rpsDelta": ""
+      },
+      {
+        "framework": "fastify",
+        "protection": "chakra",
+        "rps": 33442,
+        "p50": 1,
+        "p99": 3,
+        "shedPct": 0,
+        "rpsDelta": "-34.3%"
+      }
+    ],
+    "load": [
+      {
+        "framework": "express",
+        "protection": "none",
+        "rps": 4498,
+        "p50": 3,
+        "p99": 16,
+        "shedPct": 0,
+        "rpsDelta": ""
+      },
+      {
+        "framework": "express",
+        "protection": "chakra",
+        "rps": 4498,
+        "p50": 3,
+        "p99": 56,
+        "shedPct": 59.66,
+        "rpsDelta": "0.0%"
+      },
+      {
+        "framework": "fastify",
+        "protection": "none",
+        "rps": 25446,
+        "p50": 1,
+        "p99": 10,
+        "shedPct": 0,
+        "rpsDelta": ""
+      },
+      {
+        "framework": "fastify",
+        "protection": "chakra",
+        "rps": 25442,
+        "p50": 1,
+        "p99": 9,
+        "shedPct": 99.69,
+        "rpsDelta": "-0.0%"
+      }
+    ]
+  },
+  "overload": {
+    "framework": "express",
+    "capacity": {
+      "pool": 8,
+      "serviceMs": 10,
+      "cpuUs": 100,
+      "fixedCap": 16,
+      "rps": 533
+    },
+    "phases": [
+      {
+        "name": "warm-up",
+        "seconds": 5,
+        "rps": 300
+      },
+      {
+        "name": "baseline",
+        "seconds": 10,
+        "rps": 300
+      },
+      {
+        "name": "spike",
+        "seconds": 20,
+        "rps": 1500
+      },
+      {
+        "name": "recovery",
+        "seconds": 10,
+        "rps": 300
+      }
+    ],
+    "mix": [
+      {
+        "method": "POST",
+        "path": "/checkout",
+        "weight": 0.1,
+        "priority": "critical"
+      },
+      {
+        "method": "GET",
+        "path": "/browse",
+        "weight": 0.4,
+        "priority": "normal"
+      },
+      {
+        "method": "GET",
+        "path": "/recommendations",
+        "weight": 0.5,
+        "priority": "sheddable"
+      }
+    ],
+    "sloMs": 250,
+    "timeoutMs": 2000,
+    "results": [
+      {
+        "mode": "none",
+        "adapter": "none",
+        "criticalBaselineP99": 24.3,
+        "criticalSuccess": 7.3,
+        "criticalP50": 967.6,
+        "criticalP99": 1997.8,
+        "normalSuccess": 7,
+        "sheddableSuccess": 2,
+        "goodputRps": 69,
+        "firstShedMs": null,
+        "recoveredMs": null,
+        "routes": [
+          {
+            "route": "POST /checkout",
+            "priority": "critical",
+            "n": 3094,
+            "ok": 225,
+            "successRate": 7.3,
+            "p50": 967.6,
+            "p99": 1997.8
+          },
+          {
+            "route": "GET /browse",
+            "priority": "normal",
+            "n": 12245,
+            "ok": 861,
+            "successRate": 7,
+            "p50": 1016.6,
+            "p99": 1986.7
+          },
+          {
+            "route": "GET /recommendations",
+            "priority": "sheddable",
+            "n": 14661,
+            "ok": 287,
+            "successRate": 2,
+            "p50": 1030.8,
+            "p99": 1989.1
+          }
+        ]
+      },
+      {
+        "mode": "cap",
+        "adapter": "cap",
+        "criticalBaselineP99": 34.7,
+        "criticalSuccess": 33.4,
+        "criticalP50": 20.5,
+        "criticalP99": 29.5,
+        "normalSuccess": 34.1,
+        "sheddableSuccess": 35.3,
+        "goodputRps": 519,
+        "firstShedMs": 11,
+        "recoveredMs": null,
+        "routes": [
+          {
+            "route": "POST /checkout",
+            "priority": "critical",
+            "n": 3094,
+            "ok": 1033,
+            "successRate": 33.4,
+            "p50": 20.5,
+            "p99": 29.5
+          },
+          {
+            "route": "GET /browse",
+            "priority": "normal",
+            "n": 12245,
+            "ok": 4173,
+            "successRate": 34.1,
+            "p50": 20.5,
+            "p99": 26.9
+          },
+          {
+            "route": "GET /recommendations",
+            "priority": "sheddable",
+            "n": 14661,
+            "ok": 5178,
+            "successRate": 35.3,
+            "p50": 40.7,
+            "p99": 50
+          }
+        ]
+      },
+      {
+        "mode": "chakra",
+        "adapter": "dist/adapters",
+        "criticalBaselineP99": 25.9,
+        "criticalSuccess": 99.5,
+        "criticalP50": 23.6,
+        "criticalP99": 51.2,
+        "normalSuccess": 91.4,
+        "sheddableSuccess": 5.9,
+        "goodputRps": 756,
+        "firstShedMs": 7,
+        "recoveredMs": 0,
+        "routes": [
+          {
+            "route": "POST /checkout",
+            "priority": "critical",
+            "n": 3094,
+            "ok": 3079,
+            "successRate": 99.5,
+            "p50": 23.6,
+            "p99": 51.2
+          },
+          {
+            "route": "GET /browse",
+            "priority": "normal",
+            "n": 12244,
+            "ok": 11192,
+            "successRate": 91.4,
+            "p50": 23.4,
+            "p99": 40.5
+          },
+          {
+            "route": "GET /recommendations",
+            "priority": "sheddable",
+            "n": 14661,
+            "ok": 858,
+            "successRate": 5.9,
+            "p50": 20.5,
+            "p99": 57.2
+          }
+        ]
+      }
+    ]
+  }
+}
