@@ -5,28 +5,53 @@
 //   const c = chakra({ routes: { 'POST /checkout': 'critical', 'GET /recommendations': 'sheddable' } });
 //   app.get('/metrics', c.metricsHandler);
 //
-// The Express/Fastify adapters, adaptive limiter and Prometheus exporter are wired in
-// here as their modules land; until then the stand-ins in src/core/defaults.ts are used.
+//   app.use(c);                                   // Express
+//   app.register(c.fastify);                      // Fastify
 
-import type { IncomingMessage, ServerResponse } from 'node:http';
+import type { ServerResponse } from 'node:http';
 import {
   NOOP_SINK,
   type ChakraEventSink,
   type Limiter,
   type LimiterSnapshot,
   type MetricsExporter,
+  type Logger,
 } from './types';
 import { resolveOptions, type ChakraOptions, type ResolvedOptions } from './config/schema';
 import { createAdmissionCore, type ControllableAdmissionCore } from './core/admission';
-import { admitAllLimiter, exactRouteResolver } from './core/defaults';
+import { createRouteTable, EMERGENCY_PRESETS, route, type EmergencyPreset } from './priority';
+import { expressMiddleware } from './adapters/express';
+import { fastifyPlugin, type FastifyAdapterOptions } from './adapters/fastify';
+import { createLimiter } from './limiter';
+import { createPrometheusExporter } from './observability/prometheus';
+import { createDryRunReporter, type DryRunReport } from './observability/dry-run';
+import { onceLogger } from './utils/logger';
+import { createEventBus } from './observability/event-bus';
 
-export interface ChakraInstance extends ControllableAdmissionCore {
+type ExpressHandler = ReturnType<typeof expressMiddleware>;
+type FastifyPlugin = ReturnType<typeof fastifyPlugin>;
+
+/** A CHAKRA instance is itself Express middleware: `app.use(c)`. */
+export interface ChakraInstance extends ControllableAdmissionCore, ExpressHandler {
   /** Options after defaults and `CHAKRA_MODE` are applied. */
   readonly options: ResolvedOptions;
+  /** Express middleware (the instance itself). */
+  readonly express: ExpressHandler;
+  /** Fastify plugin: `app.register(c.fastify)`. Admission runs in `onRequest`. */
+  readonly fastify: FastifyPlugin;
+  /** Fastify plugin with options, e.g. `{ hook: 'preHandler' }` when priority uses `request.user`. */
+  fastifyPlugin(options?: FastifyAdapterOptions): FastifyPlugin;
+  /** Apply a named emergency preset, e.g. `'shed-normal'`. `'restore-all'` reopens every band. */
+  applyPreset(name: EmergencyPreset): void;
   /** Current limiter state. */
   snapshot(): LimiterSnapshot;
-  /** Prometheus scrape handler, usable as `app.get('/metrics', c.metricsHandler)`. */
-  metricsHandler(req: IncomingMessage, res: ServerResponse): void;
+  /**
+   * Prometheus scrape handler, usable as `app.get('/metrics', c.metricsHandler)` in
+   * Express, Fastify or a plain `http` server.
+   */
+  metricsHandler(req: unknown, res: ServerResponse | FastifyLikeReply): void;
+  /** Dry-run mode only: what would have been shed or degraded, per route. */
+  dryRunReport(): DryRunReport | undefined;
   /** Stop background timers. Safe to call more than once. */
   close(): void;
 }
@@ -37,42 +62,82 @@ export interface ChakraInstance extends ControllableAdmissionCore {
  */
 export function chakra(options: ChakraOptions = {}): ChakraInstance {
   const resolved = resolveOptions(options);
-  const sink = createSink(resolved);
-  const limiter: Limiter = admitAllLimiter();
-  const resolver = exactRouteResolver(resolved.routes);
-  const core = createAdmissionCore({ options: resolved, limiter, resolver, sink });
+  const reporter =
+    resolved.mode === 'dry-run' ? createDryRunReporter(dryRunLog(resolved)) : undefined;
+  const metrics = createMetricsSink(resolved);
+  const sink = reporter ? createEventBus(metrics, reporter) : metrics;
+  const limiter: Limiter = createLimiter(resolved.limiter, sink);
+  const table = createRouteTable({ ...resolved.routes });
+  const core = createAdmissionCore({ options: resolved, limiter, resolver: table, sink });
+  const log = safeLog(resolved);
+  const express = expressMiddleware(core, table, (msg) => log?.warn(msg));
 
   if (resolved.mode !== 'off') limiter.start();
-  if (resolved.logger) {
-    resolved.logger.info(
+  if (log) {
+    log.info(
       `mode=${resolved.mode} routes=${Object.keys(resolved.routes).length} default=${resolved.defaultPriority}`,
     );
   }
 
   let closed = false;
-  return {
+  return Object.assign(express, {
     options: resolved,
-    get mode() {
-      return core.mode;
-    },
+    mode: core.mode,
     decide: core.decide,
     setOverrides: core.setOverrides,
     getOverrides: core.getOverrides,
+    express,
+    fastify: fastifyPlugin(core, table),
+    fastifyPlugin: (opts?: FastifyAdapterOptions) => fastifyPlugin(core, table, opts),
+    applyPreset: (name: EmergencyPreset) => {
+      const preset = EMERGENCY_PRESETS[name];
+      if (preset) core.setOverrides(preset);
+    },
     snapshot: () => limiter.snapshot(),
-    metricsHandler: (_req, res) => serveMetrics(sink, res),
+    metricsHandler: (_req: unknown, res: ServerResponse | FastifyLikeReply) =>
+      serveMetrics(metrics, toServerResponse(res)),
+    dryRunReport: () => reporter?.report(),
     close() {
       if (closed) return;
       closed = true;
       limiter.stop();
+      reporter?.flush();
     },
-  };
+  });
 }
 
-function createSink(options: ResolvedOptions): ChakraEventSink {
+/** Tag an Express route with a priority: `app.post('/checkout', chakra.route('critical'), handler)`. */
+chakra.route = route;
+chakra.presets = EMERGENCY_PRESETS;
+
+function createMetricsSink(options: ResolvedOptions): ChakraEventSink {
   if (options.metrics === false) return NOOP_SINK;
   if (isSink(options.metrics)) return options.metrics;
-  // Prometheus exporter is wired in when src/observability/ lands.
-  return NOOP_SINK;
+  return createPrometheusExporter(options.metrics);
+}
+
+/** The user's logger with every call guarded, so a broken logger never throws. */
+function safeLog(options: ResolvedOptions): Logger | undefined {
+  return options.logger ? onceLogger(options.logger) : undefined;
+}
+
+function dryRunLog(options: ResolvedOptions): Parameters<typeof createDryRunReporter>[0] {
+  const logger = safeLog(options);
+  return { log: logger ? (line) => logger.info(`dry-run ${line}`) : () => {} };
+}
+
+/** The part of a Fastify reply the metrics handler needs. */
+export interface FastifyLikeReply {
+  raw: ServerResponse;
+  hijack(): unknown;
+}
+
+function toServerResponse(res: ServerResponse | FastifyLikeReply): ServerResponse {
+  if ('raw' in res && typeof res.hijack === 'function') {
+    res.hijack();
+    return res.raw;
+  }
+  return res as ServerResponse;
 }
 
 function serveMetrics(sink: ChakraEventSink, res: ServerResponse): void {
@@ -94,13 +159,25 @@ function serveMetrics(sink: ChakraEventSink, res: ServerResponse): void {
 }
 
 function isSink(value: unknown): value is ChakraEventSink {
-  return typeof value === 'object' && value !== null && typeof (value as ChakraEventSink).emit === 'function';
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    typeof (value as ChakraEventSink).emit === 'function'
+  );
 }
 
 function isExporter(sink: ChakraEventSink): sink is MetricsExporter {
   return typeof (sink as MetricsExporter).render === 'function';
 }
 
-export { ChakraConfigError, type ChakraOptions, type MetricsOptions, type ResolvedOptions } from './config/schema';
+export {
+  ChakraConfigError,
+  type ChakraOptions,
+  type MetricsOptions,
+  type ResolvedOptions,
+} from './config/schema';
 export type { Overrides } from './core/admission';
+export { route, EMERGENCY_PRESETS, type EmergencyPreset } from './priority';
+export type { FastifyAdapterOptions } from './adapters/fastify';
+export type { DryRunReport, DryRunReporter } from './observability/dry-run';
 export * from './types';

@@ -6,6 +6,7 @@
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Priority } from '../types';
+import { isPriority } from '../config/schema';
 
 export type Framework = 'express' | 'fastify';
 
@@ -28,7 +29,9 @@ export interface InitResult {
 
 const SKIP_DIRS = new Set(['node_modules', 'dist', 'build', 'coverage', '.git', '.next', 'out']);
 const SOURCE = /\.(?:[cm]?js|[cm]?ts)$/;
-const ROUTE = /\b\w+\.(get|post|put|patch|delete)\(\s*(['"`])(\/[^'"`\s$]*)\2/gi;
+// Captures an inline tag too: `chakra.route('x')` or `{ config: { chakra: 'x' } }`.
+const ROUTE =
+  /\b\w+\.(get|post|put|patch|delete)\(\s*(['"`])(\/[^'"`\s$]*)\2(?:\s*,\s*(?:\w+\.route\(|\{\s*config\s*:\s*\{\s*chakra\s*:)\s*['"](\w+)['"])?/gi;
 const CRITICAL =
   /checkout|payment|\/pay\b|billing|order|login|logout|sign-?in|sign-?up|auth|token|health|ready|live/i;
 const SHEDDABLE =
@@ -55,9 +58,9 @@ export function scanRoutes(dir: string): Record<string, Priority> {
       if (st.isDirectory()) walk(p);
       else if (SOURCE.test(name) && !name.endsWith('.d.ts') && st.size <= MAX_BYTES) {
         files++;
-        for (const [, m, , path] of readFileSync(p, 'utf8').matchAll(ROUTE)) {
+        for (const [, m, , path, tag] of readFileSync(p, 'utf8').matchAll(ROUTE)) {
           const method = m.toUpperCase();
-          routes[`${method} ${path}`] = guessPriority(method, path);
+          routes[`${method} ${path}`] = isPriority(tag) ? tag : guessPriority(method, path);
         }
       }
     }

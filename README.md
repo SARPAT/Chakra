@@ -1,237 +1,196 @@
 <div align="center">
 
-<img src="assets/chakra-logo.png" alt="CHAKRA Logo" width="160" />
+<img src="assets/chakra-logo.png" alt="CHAKRA logo" width="140" />
 
-# CHAKRA Middleware
+# CHAKRA
 
-**Intelligent graceful degradation for Node.js applications**
+**Priority-aware adaptive load shedding for Node.js.**
+When your service runs short of capacity, CHAKRA sheds the least important requests first so checkout, payment and login keep working.
 
-[![Node.js](https://img.shields.io/badge/Node.js-%3E%3D18-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.4-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Express](https://img.shields.io/badge/Express-4.x-000000?logo=express&logoColor=white)](https://expressjs.com/)
-[![License](https://img.shields.io/badge/License-Apache--2.0-D22128?logo=apache&logoColor=white)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-583%20passing-brightgreen?logo=vitest&logoColor=white)](#commands)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+[![CI](https://github.com/SARPAT/Chakra/actions/workflows/ci.yml/badge.svg)](https://github.com/SARPAT/Chakra/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/chakra-middleware.svg)](https://www.npmjs.com/package/chakra-middleware)
+[![Node.js](https://img.shields.io/badge/Node.js-%3E%3D18.18-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org/)
+[![License](https://img.shields.io/badge/License-Apache--2.0-D22128)](LICENSE)
 
----
-
-CHAKRA sits in front of your Express app and manages traffic surges by routing requests to reduced-functionality versions of your application based on real-time system stress and request priority.
-
-When your infrastructure is scaling up but not yet ready, CHAKRA bridges the gap — keeping critical requests (payments, checkouts) fully functional while gracefully degrading less important endpoints.
-
-[Quick Start](#quick-start) | [Core Concepts](#core-concepts) | [Dashboard](#dashboard) | [Architecture](#architecture) | [License](#license)
+[Getting started](docs/getting-started.md) · [Configuration](docs/configuration.md) · [Production rollout](docs/production-rollout.md) · [Operations & FAQ](docs/operations.md) · [Benchmarks](bench/RESULTS.md)
 
 </div>
 
-## How It Works
+## Why
 
-CHAKRA uses a physics-inspired model: imagine a spinning disc with concentric rings. As load increases (the disc spins faster), requests are "thrown" outward to outer rings with reduced functionality. High-priority requests have more "mass" and resist being thrown outward, staying close to the core where full functionality is preserved.
+When a Node.js service is overloaded, every request gets slower until they all time out. A rate limiter or a blanket `503` makes it fail faster, but it fails your checkout just as often as your recommendation carousel.
 
-Each incoming request gets one of three outcomes:
+CHAKRA makes overload **selective**:
 
-- **SERVE_FULLY** — request passes through to your backend unchanged
-- **SERVE_LIMITED** — request passes through with `X-Chakra-*` headers signaling reduced functionality
-- **SUSPEND** — CHAKRA returns a fallback response directly; your backend never sees the request
+- **Always on, invisible until needed.** An adaptive concurrency limiter (Gradient2, or AIMD) tracks request latency and event-loop delay and adjusts its limit in milliseconds. There is nothing to activate and no threshold to guess.
+- **You declare what matters.** Tag routes `critical`, `high`, `normal` or `sheddable`. Each band may use only a share of the current limit, so `sheddable` is refused first and `critical` keeps capacity until the very end.
+- **Degrade before shedding.** Requests admitted close to their band's limit arrive with `req.chakra.degraded === true`, so handlers can skip the expensive part and still answer.
+- **Safe to roll out.** Dry-run mode admits everything and reports what it would have shed.
+- **Metrics out, nothing in.** Prometheus metrics and a ready-made Grafana dashboard. No UI server, no listening ports, no database.
+- **Small and dependency-free.** Pure TypeScript, no native modules, no runtime dependencies, no PII stored. Per-request overhead is measured in microseconds ([benchmarks](bench/RESULTS.md)).
 
-## Quick Start
+## Install
 
 ```bash
 npm install chakra-middleware
 ```
 
-**1. Create a config file** (`chakra.config.yaml`):
+Node.js 18.18 or newer. Express 4+ and Fastify 4+ are optional peer dependencies.
 
-```yaml
-mode: manual
-version: "1"
-activate_when:
-  rpm_threshold: 70
-dashboard:
-  enabled: true
-  port: 4242
-```
+## Two-line setup
 
-**2. Add to your Express app** (two lines):
+**Express**
 
-```javascript
+```js
 const { chakra } = require('chakra-middleware');
 
-const app = express();
-const ch = chakra('./chakra.config.yaml');
-
-// Mount middleware
-app.use(ch.middleware());
-
-// Annotate routes with blocks
-app.post('/api/payment', ch.block('payment-block'), paymentHandler);
-app.get('/api/products', ch.block('api-block'), productsHandler);
-app.get('/static/style.css', ch.block('static-block'), staticHandler);
-
-app.listen(3000);
+const c = chakra({ routes: { 'POST /checkout': 'critical', 'GET /recommendations': 'sheddable' } });
+app.use(c); // before your routes
 ```
 
-That's it. CHAKRA starts learning your traffic patterns immediately via Shadow Mode.
+**Fastify**
 
-## Core Concepts
+```js
+const { chakra } = require('chakra-middleware');
 
-### Blocks
-
-Group your routes into logical blocks (e.g., `payment-block`, `api-block`, `static-block`). Each block can be independently degraded or suspended based on load. Critical blocks like payments resist degradation through the Weight Engine.
-
-### Ring Map
-
-Maps each `METHOD:PATH` to a block with a minimum degradation level and base weight. Shadow Mode auto-generates a suggested Ring Map by observing your traffic.
-
-### RPM Score
-
-A composite 0-100 load score combining three signals:
-- Request Arrival Rate (30%)
-- Response Latency P95 (40%)
-- Error Rate Delta (30%)
-
-Updated every 5 seconds with smoothing across 3 readings.
-
-### Activation Modes
-
-- **Manual** — activate/deactivate via the dashboard
-- **Auto** — CHAKRA watches RPM and activates when thresholds are breached for a sustained period
-
-### Weight Engine
-
-When a request hits a suspended block, the Weight Engine calculates a 0-100 priority score using 8 signals: block base weight, HTTP method, authentication status, session depth, cart items, moment-of-value signatures, user tier, and developer overrides. High-weight requests break through suspension.
-
-### Shadow Mode
-
-Runs from the moment CHAKRA is installed. Silently observes all requests (never touches the request path) and learns in 4 layers:
-
-1. **App Structure** (hours) — endpoints, methods, response patterns
-2. **Traffic Patterns** (days) — peak times, request distributions
-3. **User Behaviour** (weeks) — session flows, conversion paths
-4. **Failure Signatures** (requires a stress event) — what breaks first
-
-Produces suggestions for Ring Map configuration, RPM thresholds, and policies. Never auto-activates — always requires human approval.
-
-### Policy Engine
-
-Developer-written rules evaluated during dispatch:
-
-```yaml
-policies:
-  - name: protect-checkout
-    priority: 100
-    conditions:
-      block: checkout-block
-      session_depth_gte: 3
-      has_cart_items: true
-    action: serve_fully
+const c = chakra({ routes: { 'POST /checkout': 'critical', 'GET /recommendations': 'sheddable' } });
+app.register(c.fastify); // before your routes
 ```
 
-Supports conditions like `user_tier`, `session_depth`, `cart_items`, `rpm_above`, `time_between`, and more.
+With no routes at all, every request is `normal` and CHAKRA only sheds when the process is genuinely saturated. That is a safe default, but declaring priorities is where the value is.
 
-## Dashboard
-
-CHAKRA serves a web dashboard on port 4242 (configurable) with:
-
-- Live RPM chart with threshold indicators
-- Block state grid showing active/suspended status per block
-- Shadow Mode learning progress across all 4 layers
-- Policy management with emergency presets
-- Manual activation/deactivation controls
-- Real-time updates via WebSocket during active incidents
-
-## Architecture
-
-```
-Request Flow (hot path, <2ms budget):
-
-  HTTP Request
-       |
-  [ Dispatcher ] ── read ── Ring Map (O(1) lookup)
-       |                     Block States
-       |                     RPM Snapshot
-       |
-   suspended? ── no ──> SERVE_FULLY
-       |
-      yes
-       |
-  [ Weight Engine ] ── score >= 65 ──> SERVE_FULLY
-       |                score 40-64 ──> SERVE_LIMITED
-       |                score < 40  ──> SUSPEND
-       |
-  [ Policy Engine ] ── rule override? ──> apply action
-       |
-    outcome
-
-Background processes (async, never on request path):
-
-  [ RPM Engine ]      — updates load score every 5s
-  [ Shadow Mode ]     — observes requests, runs analysis hourly/daily
-  [ Session Cache ]   — in-memory session context store
-  [ Container Bridge] — reads K8s/ECS/Prometheus signals (optional)
-```
-
-## Container Bridge (Optional)
-
-Reads infrastructure signals to make Auto Mode more precise:
-
-- **Kubernetes** — HPA status, pod readiness
-- **ECS** — AWS service scaling state
-- **Prometheus** — generic metric queries
-- **Webhook** — POST endpoint for custom infrastructure
-
-CHAKRA never manages infrastructure — it only reads signals to answer: is scaling in progress? how long until ready? at capacity limit?
-
-## Commands
+## See it work
 
 ```bash
-npm run build          # TypeScript compile
-npm test               # Run all tests (583 tests across 12 suites)
-npm run test:watch     # Vitest watch mode
-npm run lint           # ESLint
-npm run dev            # Start in watch mode
+npx chakra demo          # overloads a sample shop API and shows per-route results live
+npx chakra demo --off    # the same surge without CHAKRA, for comparison
+npx chakra init          # writes chakra.config.js with the routes found in your project
 ```
 
-## Project Structure
+## Priorities
 
-```
-src/
-  index.ts                     # Entry point, public API
-  types.ts                     # Shared interfaces
-  core/
-    dispatcher.ts              # Hot path (<2ms)
-    weight-engine.ts           # Request priority scoring
-    ring-mapper.ts             # Route-to-block lookup
-    policy-engine.ts           # Rule evaluator
-    activation.ts              # Manual/Auto mode control
-  background/
-    rpm-engine.ts              # Load signal producer
-    session-cache.ts           # In-memory session store
-    shadow-mode/
-      observer.ts              # Request observation
-      analyser.ts              # Pattern analysis
-      suggester.ts             # Ring Map & policy suggestions
-  integrations/
-    express.ts                 # Express adapter
-    container-bridge/          # K8s, ECS, Prometheus, Webhook
-  dashboard/
-    server.ts                  # Dashboard HTTP server
-    api.ts                     # REST + WebSocket API
-    dashboard.html             # Single-page dashboard UI
-  config/
-    loader.ts                  # YAML config reader
-    defaults.ts                # Default values
-  utils/
-    hasher.ts                  # SHA-256 hashing (privacy)
-    logger.ts                  # Structured logging
+| Priority    | Default share of the limit | Use it for                                    |
+| ----------- | -------------------------- | --------------------------------------------- |
+| `critical`  | 100%                       | checkout, payment, login, health checks       |
+| `high`      | 90%                        | core product pages and APIs                   |
+| `normal`    | 75%                        | everything you did not tag                    |
+| `sheddable` | 50%                        | recommendations, analytics, prefetch, exports |
+
+Priority is resolved per request in this order: your `priority(ctx)` function, then the matching route rule, then `defaultPriority` (`normal`).
+
+```js
+const c = chakra({
+  routes: {
+    'POST /checkout': 'critical',
+    'GET /api/products/:id': 'high',
+    'GET /recommendations': { priority: 'sheddable', fallback: { status: 200, body: [] } },
+    '* /internal/*': 'sheddable',
+  },
+  // Use the authenticated user, never request headers: clients control headers.
+  priority: (ctx) => (ctx.user?.plan === 'enterprise' ? 'high' : undefined),
+});
 ```
 
-## Design Principles
+In Express you can also tag a route inline, and in Fastify through route config:
 
-- **Never crash the host app.** If any CHAKRA component fails, it disables itself silently. Uncaught exceptions never escape the middleware.
-- **Privacy first.** All user IDs and session tokens are SHA-256 hashed before storage. No request/response bodies are ever stored.
-- **Read-only hot path.** The Dispatcher never writes state. All writes happen in background processes via atomic snapshot swaps.
-- **Suggest, don't auto-activate.** Shadow Mode learns and suggests; humans decide when to activate.
+```js
+const { route } = require('chakra-middleware');
+app.post('/checkout', route('critical'), handler);                         // Express
+app.post('/checkout', { config: { chakra: 'critical' } }, handler);        // Fastify, after `await app.register(c.fastify)`
+```
+
+## Degrade mode
+
+```js
+app.get('/products/:id', async (req, res) => {
+  const product = await db.product(req.params.id);
+  if (req.chakra?.degraded) return res.json(product); // skip reviews and recommendations
+  res.json({ ...product, reviews: await reviews(product.id), related: await related(product.id) });
+});
+```
+
+`req.chakra` holds `{ priority, degraded, wouldShed, pressure, mode }`. Shed requests never reach your handler; they get a `503` with `Retry-After` (configurable globally with `shedResponse` or per route with `fallback`).
+
+## Roll out with dry-run
+
+```bash
+CHAKRA_MODE=dry-run node server.js
+```
+
+Dry-run runs the real limiter, admits every request, marks would-be sheds with `req.chakra.wouldShed`, exports them as `dry_run="true"` metrics and logs a rate-limited summary. When the numbers look right, remove the variable to enforce. `CHAKRA_MODE=off` turns CHAKRA into a pass-through without a redeploy. See [Production rollout](docs/production-rollout.md).
+
+## Metrics and dashboard
+
+```js
+app.get('/metrics', c.metricsHandler); // Express; you choose the path and who can reach it
+```
+
+| Metric                                                     | Type      |
+| ---------------------------------------------------------- | --------- |
+| `chakra_requests_total{decision,band,route,dry_run}`       | counter   |
+| `chakra_inflight_requests`                                 | gauge     |
+| `chakra_concurrency_limit`                                 | gauge     |
+| `chakra_event_loop_lag_seconds`                            | gauge     |
+| `chakra_shed_latency_seconds{band}`                        | histogram |
+
+Import [`grafana/chakra-dashboard.json`](grafana/chakra-dashboard.json) into Grafana for shed ratio per band, limit vs in-flight, event-loop lag and top shed routes. `route` labels are route patterns, never raw paths, and are capped in number.
+
+## Incident lever
+
+```js
+const { EMERGENCY_PRESETS } = require('chakra-middleware');
+
+c.setOverrides({ closedBands: ['sheddable'] });   // shed a band outright
+c.setOverrides(EMERGENCY_PRESETS['critical-only']); // high, normal and sheddable closed
+c.setOverrides(EMERGENCY_PRESETS['restore-all']);
+```
+
+Expose this behind your own authenticated admin route or feature-flag system; CHAKRA opens no ports.
+
+## Configuration at a glance
+
+```js
+chakra({
+  mode: 'enforce',                 // 'enforce' | 'dry-run' | 'off'; CHAKRA_MODE env wins
+  defaultPriority: 'normal',
+  routes: {},                      // { 'METHOD /pattern': priority | { priority, fallback } }
+  priority: undefined,             // (ctx) => priority | undefined
+  limiter: {
+    algorithm: 'gradient2',        // or 'aimd'
+    initialLimit: 20, minLimit: 1, maxLimit: 1000,
+    maxEventLoopDelayMs: 100,
+    bandShares: { critical: 1, high: 0.9, normal: 0.75, sheddable: 0.5 },
+    degradeAt: 0.8,
+  },
+  shedResponse: { status: 503, retryAfterSeconds: 1, body: { error: 'overloaded', message: '...' } },
+  metrics: { prefix: 'chakra_', maxRoutes: 200 }, // or false, or your own sink
+  logger: console-like | false,
+});
+```
+
+Invalid options throw a `ChakraConfigError` listing every problem at startup; unknown keys are errors. After construction CHAKRA never throws into your request path: on any internal failure the request is admitted. Full reference: [docs/configuration.md](docs/configuration.md).
+
+## How it compares
+
+|                                    | Rate limiter            | Autoscaling            | CHAKRA                                   |
+| ---------------------------------- | ----------------------- | ---------------------- | ---------------------------------------- |
+| Reacts to                          | request count per key   | CPU / queue metrics    | latency and event-loop delay, per process |
+| Reaction time                      | immediate               | minutes                | milliseconds                             |
+| Needs a threshold you pick         | yes                     | yes                    | no, the limit adapts                     |
+| Knows checkout matters more        | no                      | no                     | yes                                      |
+| Protects against slow dependencies | no                      | often makes it worse   | yes, latency drives the limit            |
+
+Use them together. Rate limiters stop abusive clients, autoscaling adds capacity, and CHAKRA keeps critical traffic healthy while capacity is short: surges, slow dependencies, bad deploys, retry storms, bot floods.
+
+## Design
+
+- [ADR 0001: adaptive admission control](docs/adr/0001-adaptive-admission-control.md) explains the design and why v0.1 was replaced.
+- State is per process on purpose. Every process protects its own event loop; there is no Redis and nothing to coordinate.
+
+## Contributing and security
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md). Release notes are in [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 
-Apache-2.0
+[Apache-2.0](LICENSE)
