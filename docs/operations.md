@@ -62,4 +62,4 @@ Each worker or pod runs its own limiter and exports its own metrics. Aggregate a
 Call the handler with `req.chakra = { degraded: true, ... }` in a unit test, or run `npx chakra demo`-style load against a staging instance and watch the `degraded` decision count.
 
 **Where is the v0.1 dashboard and Shadow Mode?**
-Removed in v1. See [ADR 0001](adr/0001-adaptive-admission-control.md) for why; the old design documents are archived in [docs/archive/v0](archive/v0).
+Removed in 0.2.0. See [ADR 0001](adr/0001-adaptive-admission-control.md) for why; the old design documents are archived in [docs/archive/v0](archive/v0).
