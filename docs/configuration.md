@@ -104,16 +104,29 @@ A string body is sent as-is; anything else is sent as JSON. The defaults are sho
 
 ## Fastify
 
-`app.register(c.fastify)` runs admission in the `onRequest` hook, the earliest point, so a shed request costs almost nothing. If your priority resolver needs `request.user` set by an authentication hook, run CHAKRA after it in `preHandler` instead (see the exported `fastifyPlugin` options in the type definitions).
+`app.register(c.fastify)` runs admission in the `onRequest` hook, the earliest point, so a shed request costs almost nothing. If your priority resolver needs `request.user` set by an authentication hook, run admission in `preHandler` instead:
+
+```js
+app.register(c.fastifyPlugin({ hook: 'preHandler' }));
+```
+
+To expose metrics from Fastify, hand the raw Node objects to the handler:
+
+```js
+app.get('/metrics', (req, reply) => c.metricsHandler(req.raw, reply.hijack().raw));
+```
 
 ## Instance API
 
 | Member                     | Description                                                                |
 | -------------------------- | -------------------------------------------------------------------------- |
 | `c` (Express)              | The instance is Express middleware: `app.use(c)`.                          |
+| `c.express`                | The same Express middleware, as a named property.                          |
 | `c.fastify`                | Fastify plugin: `app.register(c.fastify)`.                                 |
+| `c.fastifyPlugin(opts)`    | Fastify plugin with options, e.g. `{ hook: 'preHandler' }`.               |
 | `c.metricsHandler(req, res)` | Prometheus scrape handler on Node's `IncomingMessage` / `ServerResponse`. |
 | `c.setOverrides({ closedBands })` | Close bands immediately, e.g. `['sheddable']`. `[]` reopens all.    |
+| `c.applyPreset(name)`      | Apply one of the `EMERGENCY_PRESETS` by name.                              |
 | `c.getOverrides()`         | Current overrides.                                                         |
 | `c.snapshot()`             | `{ limit, inFlight, pressure, eventLoopDelayMs, bandLimits }`.             |
 | `c.dryRunReport()`         | In dry-run mode: totals and per-route counts of would-be sheds.            |
